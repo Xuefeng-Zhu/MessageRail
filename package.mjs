@@ -8,9 +8,9 @@
  * Output: messagerail-<version>.zip
  */
 
-import { readFileSync, createWriteStream, readdirSync, statSync, existsSync } from 'fs';
-import { join, relative } from 'path';
-import { createDeflateRaw } from 'zlib';
+import { execFileSync } from 'child_process';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 // Read version from manifest
 const manifest = JSON.parse(readFileSync('manifest.json', 'utf-8'));
@@ -63,7 +63,7 @@ function walkDir(dir, files) {
  * Minimal ZIP file writer (store method — no compression needed for small extensions).
  * Uses the ZIP format spec for local file headers + central directory.
  */
-async function createZip(filePaths, outputPath) {
+function createZip(filePaths, outputPath) {
   const entries = [];
 
   for (const filePath of filePaths) {
@@ -142,9 +142,7 @@ async function createZip(filePaths, outputPath) {
   eocd.writeUInt16LE(0, 20);                   // Comment length
   buffers.push(eocd);
 
-  const zipBuffer = Buffer.concat(buffers);
-  const fs = await import('fs');
-  fs.writeFileSync(outputPath, zipBuffer);
+  writeFileSync(outputPath, Buffer.concat(buffers));
 }
 
 /**
@@ -168,21 +166,17 @@ const files = collectFiles(includes);
 console.log(`Packaging ${files.length} files into ${outFile}...`);
 files.forEach((f) => console.log(`  ${f}`));
 
-// Write ZIP using a simpler approach — just shell out to zip if available,
+// Write ZIP using a simpler approach: use zip when available,
 // otherwise use the built-in implementation
-import { execSync } from 'child_process';
 
 try {
-  // Remove old zip if it exists
-  try { execSync(`rm -f ${outFile}`); } catch {}
+  rmSync(outFile, { force: true });
 
   // Use system zip command (available on macOS and most Linux)
-  const fileList = files.join(' ');
-  execSync(`zip -r ${outFile} ${fileList}`, { stdio: 'inherit' });
+  execFileSync('zip', ['-r', outFile, ...files], { stdio: 'inherit' });
 
   console.log(`\n✓ Created ${outFile}`);
 } catch {
-  console.error('zip command not found. Install zip or create the archive manually:');
-  console.error(`  zip -r ${outFile} ${includes.join(' ')}`);
-  process.exit(1);
+  createZip(files, outFile);
+  console.log(`\n✓ Created ${outFile} using the built-in ZIP writer`);
 }
