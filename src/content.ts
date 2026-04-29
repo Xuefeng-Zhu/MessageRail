@@ -18,6 +18,7 @@ import { GrokAdapter } from './adapters/grok';
 import { PerplexityAdapter } from './adapters/perplexity';
 import { MessageIndex } from './core/message-index';
 import { SidebarController } from './ui/sidebar-controller';
+import { filterMessagesForSidebarSearch } from './ui/sidebar-search';
 import { PreferencesStore } from './storage/preferences-store';
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -48,11 +49,11 @@ let messageIndex: MessageIndex | null = null;
 /** Reference to the current adapter. */
 let currentAdapter: SiteAdapter | null = null;
 
+/** Monotonic token used to ignore stale async initialization work. */
+let initializationToken: number = 0;
+
 /** Tracks the last known URL for SPA navigation detection. */
 let lastUrl: string = '';
-
-/** Whether the extension runtime is still connected. */
-let runtimeConnected = true;
 
 /** Preferences store instance. */
 const preferencesStore = new PreferencesStore();
@@ -117,6 +118,8 @@ function pollForAdapter(
  * healthcheck, and unmounts the sidebar.
  */
 function teardown(): void {
+  initializationToken++;
+
   if (observerCleanup) {
     observerCleanup();
     observerCleanup = null;
@@ -143,37 +146,46 @@ function teardown(): void {
  * message index, mounts the sidebar, and wires all interactions.
  */
 async function initialize(): Promise<void> {
+  const token = ++initializationToken;
   const registry = createRegistry();
 
   const adapter = await pollForAdapter(registry);
+  if (token !== initializationToken) {
+    return;
+  }
+
   if (!adapter) {
     console.debug('[MessageRail] No matching adapter found for this page. Exiting gracefully.');
     return;
   }
 
-  currentAdapter = adapter;
-
   // Extract chat context
   const chatContext = adapter.getChatContext(document);
 
   // Create message index
-  messageIndex = new MessageIndex();
+  const nextMessageIndex = new MessageIndex();
   if (chatContext) {
-    messageIndex.setChatContext(chatContext.provider, chatContext.chatId);
+    nextMessageIndex.setChatContext(chatContext.provider, chatContext.chatId);
     // Pin loading disabled for now
-    // await messageIndex.loadPins(chatContext.chatId);
+    // await nextMessageIndex.loadPins(chatContext.chatId);
   }
 
   // Scan visible messages
   try {
     const visibleMessages = adapter.scanVisible(document);
-    messageIndex.update(visibleMessages);
+    nextMessageIndex.update(visibleMessages);
   } catch (err) {
     console.error('[MessageRail] Error scanning visible messages:', err);
   }
 
   // Load sidebar collapsed preference
   const collapsed = await preferencesStore.get<boolean>('sidebarCollapsed');
+  if (token !== initializationToken) {
+    return;
+  }
+
+  currentAdapter = adapter;
+  messageIndex = nextMessageIndex;
 
   // Create sidebar with callbacks (pin disabled for now)
   sidebar = new SidebarController({
@@ -191,7 +203,7 @@ async function initialize(): Promise<void> {
     sidebar.toggle();
   }
 
-  sidebar.render(messageIndex.getAll());
+  sidebar.render(nextMessageIndex.getAll());
 
   // Attach live observer
   try {
@@ -223,10 +235,10 @@ function handleJump(uid: string): void {
   // We need the original ObservedMessage with its element reference
   // to materialize. Re-scan to get current DOM references.
   const observed = currentAdapter.scanVisible(document);
-  const match = observed.find((m: ObservedMessage) => {
-    // Match by ordinal position since UIDs may differ for streaming
-    return observed.indexOf(m) === indexed.ordinal - 1;
-  });
+  const match =
+    observed.find((m: ObservedMessage) => m.uid === indexed.uid) ??
+    observed[indexed.ordinal - 1] ??
+    null;
 
   if (!match) return;
 
@@ -258,13 +270,9 @@ function handleSearch(query: string): void {
   if (query.trim() === '') {
     sidebar.render(messageIndex.getAll());
   } else {
-    // Pass all messages so render can pair user→assistant,
-    // but search results determine which user messages to show
     const searchResults = messageIndex.search(query);
     const allMessages = messageIndex.getAll();
-    // Filter: keep user messages that matched, plus all assistant messages for pairing
-    const matchedUserUids = new Set(searchResults.filter(m => m.role === 'user').map(m => m.uid));
-    const filtered = allMessages.filter(m => m.role === 'assistant' || matchedUserUids.has(m.uid));
+    const filtered = filterMessagesForSidebarSearch(allMessages, searchResults);
     sidebar.render(filtered);
   }
 }
@@ -301,6 +309,10 @@ function handleObserverUpdate(messages: ObservedMessage[]): void {
  * DOM structure disappears, disables the observer and shows a banner.
  */
 function startHealthcheck(adapter: SiteAdapter): void {
+  if (healthcheckTimer !== null) {
+    clearInterval(healthcheckTimer);
+  }
+
   healthcheckTimer = setInterval(() => {
     const healthy = adapter.healthcheck(document);
     if (!healthy) {
@@ -365,7 +377,6 @@ function setupRuntimeMessageListener(): void {
   } catch {
     // Extension context may be invalidated (e.g., after extension update).
     // Degrade gracefully — sidebar remains functional but commands won't work.
-    runtimeConnected = false;
     console.debug(
       '[MessageRail] Could not attach runtime message listener. Extension may have been updated.',
     );
@@ -374,24 +385,66 @@ function setupRuntimeMessageListener(): void {
 
 // ── SPA Navigation ─────────────────────────────────────────────────
 
+/** Interval in milliseconds for URL polling fallback. */
+const URL_POLL_INTERVAL_MS = 1000;
+
+/** Timer ID for URL polling. */
+let urlPollTimer: ReturnType<typeof setInterval> | null = null;
+
 /**
  * Handles SPA navigation by detecting URL changes and reinitializing.
  */
 function handleNavigation(): void {
   const currentUrl = document.URL;
+  if (lastUrl === '') {
+    lastUrl = currentUrl;
+    return;
+  }
+
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
     teardown();
-    initialize();
+    void initialize();
   }
 }
 
 /**
  * Sets up listeners for SPA navigation events.
+ *
+ * Modern AI chat apps (ChatGPT, Claude, Gemini, Grok, Perplexity) use
+ * history.pushState / replaceState for client-side navigation, which
+ * does NOT fire popstate. We patch these methods to run the same URL
+ * check, and add a polling fallback for any edge cases.
  */
 function setupNavigationListeners(): void {
+  if (urlPollTimer !== null) {
+    return;
+  }
+
+  lastUrl = document.URL;
+
+  // Standard browser navigation events
   window.addEventListener('popstate', handleNavigation);
   window.addEventListener('hashchange', handleNavigation);
+
+  // Patch history.pushState and replaceState to run the same URL check.
+  // SPAs use these to navigate between conversations without a page reload.
+  const originalPushState = history.pushState.bind(history);
+  const originalReplaceState = history.replaceState.bind(history);
+
+  history.pushState = function (...args: Parameters<typeof history.pushState>): void {
+    originalPushState(...args);
+    handleNavigation();
+  };
+
+  history.replaceState = function (...args: Parameters<typeof history.replaceState>): void {
+    originalReplaceState(...args);
+    handleNavigation();
+  };
+
+  // Polling fallback: catches edge cases where navigation happens
+  // without pushState/replaceState (e.g. framework-specific routing).
+  urlPollTimer = setInterval(handleNavigation, URL_POLL_INTERVAL_MS);
 }
 
 // ── Entry Point ────────────────────────────────────────────────────
@@ -403,7 +456,7 @@ function setupNavigationListeners(): void {
 function main(): void {
   setupRuntimeMessageListener();
   setupNavigationListeners();
-  initialize();
+  void initialize();
 }
 
 main();

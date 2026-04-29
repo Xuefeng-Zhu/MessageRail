@@ -481,6 +481,8 @@ export class SidebarController {
    * Requirements: 6.1, 6.2, 6.5, 12.1, 12.2, 12.5
    */
   mount(doc: Document): void {
+    doc.getElementById('messagerail-host')?.remove();
+
     // Create host element
     this.hostElement = doc.createElement('div');
     this.hostElement.id = 'messagerail-host';

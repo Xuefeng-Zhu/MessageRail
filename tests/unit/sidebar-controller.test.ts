@@ -62,6 +62,20 @@ describe('SidebarController', () => {
       const listContainer = shadowQuery(controller, '.mr-message-list-container');
       expect(listContainer).not.toBeNull();
     });
+
+    it('replaces an existing MessageRail host before mounting', () => {
+      const staleHost = document.createElement('div');
+      staleHost.id = 'messagerail-host';
+      document.body.appendChild(staleHost);
+
+      controller = new SidebarController();
+      controller.mount(document);
+
+      const hosts = document.querySelectorAll('#messagerail-host');
+      expect(hosts.length).toBe(1);
+      expect(hosts[0]).not.toBe(staleHost);
+      expect(hosts[0].shadowRoot).not.toBeNull();
+    });
   });
 
   // ── 2. Toggle collapse/expand ───────────────────────────────────────
