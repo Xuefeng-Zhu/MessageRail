@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "name": "Auto Build",
   "description": "Automatically runs npm run build when any TypeScript source file or manifest is edited",
   "version": "1",
