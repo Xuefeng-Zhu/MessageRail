@@ -86,12 +86,65 @@ const SIDEBAR_STYLES = `
     font-size: 13px;
     line-height: 1.5;
     box-sizing: border-box;
-    transition: width 0.2s ease;
+    transition: width 0.2s ease, opacity 0.2s ease;
     overflow: hidden;
   }
 
   .mr-sidebar.mr-collapsed {
-    width: 36px;
+    width: 0;
+    border-left: none;
+    box-shadow: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ── Floating action button (visible when collapsed) ── */
+
+  .mr-fab {
+    display: none;
+    position: fixed;
+    right: 16px;
+    bottom: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--mr-accent);
+    color: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mr-font-family);
+    font-size: 18px;
+    line-height: 1;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    z-index: 2147483647;
+  }
+
+  .mr-fab:hover {
+    background: var(--mr-accent-hover);
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .mr-fab:focus-visible {
+    outline: 2px solid var(--mr-accent);
+    outline-offset: 2px;
+  }
+
+  .mr-fab:active {
+    transform: scale(0.96);
+  }
+
+  .mr-fab.mr-fab-visible {
+    display: flex;
+  }
+
+  .mr-fab svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
   }
 
   /* ── Header ─────────────────────────────── */
@@ -116,7 +169,7 @@ const SIDEBAR_STYLES = `
     text-overflow: ellipsis;
   }
 
-  .mr-collapsed .mr-header-title,
+  .mr-collapsed .mr-header,
   .mr-collapsed .mr-search-container,
   .mr-collapsed .mr-message-list-container {
     display: none;
@@ -405,6 +458,7 @@ export class SidebarController {
   private hostElement: HTMLDivElement | null = null;
   private shadowRoot: ShadowRoot | null = null;
   private sidebarEl: HTMLElement | null = null;
+  private fabEl: HTMLButtonElement | null = null;
   private messageListContainer: HTMLDivElement | null = null;
   private searchInput: HTMLInputElement | null = null;
   private collapsed: boolean = false;
@@ -503,6 +557,17 @@ export class SidebarController {
     this.messageListContainer = doc.createElement('div');
     this.messageListContainer.className = 'mr-message-list-container';
     this.sidebarEl.appendChild(this.messageListContainer);
+
+    // Floating action button (shown when sidebar is collapsed)
+    this.fabEl = doc.createElement('button');
+    this.fabEl.className = 'mr-fab';
+    this.fabEl.setAttribute('aria-label', 'Open MessageRail sidebar');
+    this.fabEl.innerHTML = '<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M3 4h14a1 1 0 1 1 0 2H3a1 1 0 0 1 0-2zm0 5h14a1 1 0 1 1 0 2H3a1 1 0 0 1 0-2zm0 5h14a1 1 0 1 1 0 2H3a1 1 0 0 1 0-2z"/></svg>';
+    this.fabEl.addEventListener('click', () => {
+      this.toggle();
+      this.callbacks.onToggle?.();
+    });
+    this.shadowRoot.appendChild(this.fabEl);
   }
 
   /**
@@ -650,8 +715,10 @@ export class SidebarController {
     this.collapsed = !this.collapsed;
     if (this.collapsed) {
       this.sidebarEl.classList.add('mr-collapsed');
+      this.fabEl?.classList.add('mr-fab-visible');
     } else {
       this.sidebarEl.classList.remove('mr-collapsed');
+      this.fabEl?.classList.remove('mr-fab-visible');
     }
   }
 
@@ -682,6 +749,7 @@ export class SidebarController {
     this.hostElement = null;
     this.shadowRoot = null;
     this.sidebarEl = null;
+    this.fabEl = null;
     this.messageListContainer = null;
     this.searchInput = null;
   }

@@ -2,8 +2,13 @@
  * Perplexity SiteAdapter for MessageRail.
  *
  * Extracts messages from the Perplexity (perplexity.ai) DOM.
- * Perplexity renders a thread of query/answer pairs, where each
- * query block is a user message and each answer block is an assistant response.
+ * Perplexity renders a thread of query/answer pairs.
+ *
+ * Known DOM structure (as of 2025):
+ * - User queries: div.break-words inside a text-foreground selection container
+ * - Assistant answers: div[id^="markdown-content-"] with class gap-y-md
+ * - The thread is inside a scrollable main area
+ * - URL pattern: /search/<uuid>
  */
 
 import type { SiteAdapter, ChatContext, ObservedMessage, LiveAnchor } from '../types';
@@ -11,20 +16,35 @@ import { generateUID, generateStreamingUID } from '../utils/uid';
 import { normalizeText } from '../utils/normalize';
 
 /**
- * Selector for message containers.
- * Perplexity uses query/answer block patterns in its thread view.
+ * Selector for assistant answer content.
+ * Perplexity uses id="markdown-content-N" for each answer block.
  */
-const MESSAGE_SELECTOR = '[class*="query"], [class*="answer"], [data-testid*="message"]';
+const ASSISTANT_SELECTOR = '[id^="markdown-content-"]';
 
 /**
- * Selector for the main thread container.
+ * Selector strategies for user query elements.
+ * Perplexity wraps user queries in styled containers.
  */
-const CHAT_CONTAINER_SELECTOR = '[class*="thread"], [class*="conversation"], main';
+const USER_QUERY_SELECTOR = '[class*="break-words"][class*="word-break"]';
 
 /**
- * Selector for detecting streaming state.
+ * Selector strategies for the conversation container.
  */
-const STREAMING_INDICATOR_SELECTOR = '[class*="streaming"], [class*="generating"], [class*="loading"]';
+const CONTAINER_SELECTOR_STRATEGIES = [
+  '[role="main"]',
+  'main',
+  '[class*="overflow-y-auto"]',
+  'body',
+];
+
+/**
+ * Selectors for detecting streaming state.
+ */
+const STREAMING_SELECTORS = [
+  '[class*="animate-pulse"]',
+  '[class*="streaming"]',
+  'button[aria-label*="Stop"]',
+];
 
 /**
  * Debounce interval in milliseconds for MutationObserver callbacks.
@@ -33,7 +53,7 @@ const DEBOUNCE_MS = 150;
 
 /**
  * Extracts the thread/chat ID from a Perplexity URL.
- * Perplexity URLs follow patterns like `/search/<threadId>` or `/thread/<threadId>`.
+ * Perplexity URLs follow patterns like `/search/<threadId>`.
  */
 function extractChatId(url: URL): string | null {
   const segments = url.pathname.split('/').filter(Boolean);
@@ -54,34 +74,78 @@ function extractChatId(url: URL): string | null {
 }
 
 /**
- * Determines the role from a message element.
- * Checks class names and data attributes for query/answer patterns.
+ * Finds the conversation container element.
  */
-function resolveRole(element: Element): 'user' | 'assistant' {
-  const className = element.className ?? '';
-  const testId = element.getAttribute('data-testid') ?? '';
-
-  if (
-    className.includes('query') ||
-    className.includes('user') ||
-    testId.includes('query') ||
-    testId.includes('user')
-  ) {
-    return 'user';
+function findContainer(doc: Document): Element | null {
+  for (const selector of CONTAINER_SELECTOR_STRATEGIES) {
+    const el = doc.querySelector(selector);
+    if (el) return el;
   }
-  return 'assistant';
+  return null;
+}
+
+/**
+ * Detects if streaming is currently active.
+ */
+function isStreamingActive(doc: Document): boolean {
+  for (const selector of STREAMING_SELECTORS) {
+    if (doc.querySelector(selector)) return true;
+  }
+  return false;
+}
+
+/**
+ * Scans for all message elements (user queries + assistant answers)
+ * and returns them in DOM order.
+ */
+function findAllMessages(doc: Document): { element: Element; role: 'user' | 'assistant' }[] {
+  const results: { element: Element; role: 'user' | 'assistant' }[] = [];
+
+  // Find all assistant answer blocks
+  const assistantElements = doc.querySelectorAll(ASSISTANT_SELECTOR);
+
+  // For each assistant answer, find the preceding user query.
+  // Perplexity structures each Q&A pair in a container.
+  // We walk up from each markdown-content to find the query text.
+  const seenUserElements = new Set<Element>();
+
+  assistantElements.forEach((assistantEl) => {
+    // Walk up to find the Q&A pair container, then look for the user query within it
+    let container = assistantEl.parentElement;
+    // Walk up a few levels to find the pair container
+    for (let i = 0; i < 8 && container; i++) {
+      // Look for a user query element at this level
+      const userQuery = container.querySelector(USER_QUERY_SELECTOR);
+      if (userQuery && !seenUserElements.has(userQuery) && userQuery.textContent?.trim()) {
+        seenUserElements.add(userQuery);
+        results.push({ element: userQuery, role: 'user' });
+        break;
+      }
+      container = container.parentElement;
+    }
+
+    results.push({ element: assistantEl, role: 'assistant' });
+  });
+
+  // If we found assistant messages but no user queries via traversal,
+  // try a direct query for user elements
+  if (results.filter(r => r.role === 'user').length === 0) {
+    const userElements = doc.querySelectorAll(USER_QUERY_SELECTOR);
+    userElements.forEach((el) => {
+      if (el.textContent?.trim() && !el.closest(ASSISTANT_SELECTOR)) {
+        results.unshift({ element: el, role: 'user' });
+      }
+    });
+  }
+
+  return results;
 }
 
 /**
  * Extracts the text content from a message element.
  */
 function extractText(element: Element): string {
-  // Perplexity renders answers with markdown and citations
-  const contentArea = element.querySelector(
-    '[class*="content"], [class*="markdown"], .prose, [class*="answer-text"]'
-  );
-  const rawText = (contentArea ?? element).textContent ?? '';
-  return rawText;
+  return element.textContent ?? '';
 }
 
 /**
@@ -112,34 +176,33 @@ export class PerplexityAdapter implements SiteAdapter {
   }
 
   scanVisible(doc: Document): ObservedMessage[] {
-    const elements = doc.querySelectorAll(MESSAGE_SELECTOR);
+    const allMessages = findAllMessages(doc);
+    if (allMessages.length === 0) {
+      return [];
+    }
+
     const url = new URL(doc.URL);
     const chatId = extractChatId(url) ?? 'unknown';
     const messages: ObservedMessage[] = [];
 
-    const isCurrentlyStreaming = doc.querySelector(STREAMING_INDICATOR_SELECTOR) !== null;
+    const isCurrentlyStreaming = isStreamingActive(doc);
 
     let ordinal = 0;
-    elements.forEach((element) => {
-      // Skip nested matches
-      if (element.closest(MESSAGE_SELECTOR) !== element) {
-        return;
-      }
-
-      ordinal++;
-      const role = resolveRole(element);
+    for (const { element, role } of allMessages) {
       const text = extractText(element);
 
       // Skip empty elements
-      if (!text.trim()) return;
+      if (!text.trim()) continue;
+
+      ordinal++;
 
       const isLastAssistant =
         role === 'assistant' &&
-        element === elements[elements.length - 1] &&
+        element === allMessages[allMessages.length - 1].element &&
         isCurrentlyStreaming;
 
       const status: 'streaming' | 'complete' = isLastAssistant ? 'streaming' : 'complete';
-      const nativeId = element.getAttribute('data-testid') ?? element.id ?? null;
+      const nativeId = element.id || null;
 
       const uid = status === 'streaming'
         ? generateStreamingUID('perplexity', chatId, role, ordinal)
@@ -153,13 +216,13 @@ export class PerplexityAdapter implements SiteAdapter {
         status,
         element,
       });
-    });
+    }
 
     return messages;
   }
 
   observe(doc: Document, onUpdate: (messages: ObservedMessage[]) => void): () => void {
-    const container = doc.querySelector(CHAT_CONTAINER_SELECTOR);
+    const container = findContainer(doc);
     if (!container) {
       console.warn('[MessageRail] Perplexity chat container not found for observer attachment.');
       return () => {};
@@ -232,7 +295,6 @@ export class PerplexityAdapter implements SiteAdapter {
   }
 
   healthcheck(doc: Document): boolean {
-    const container = doc.querySelector(CHAT_CONTAINER_SELECTOR);
-    return container !== null;
+    return findContainer(doc) !== null;
   }
 }

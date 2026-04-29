@@ -1,9 +1,15 @@
 /**
  * Claude SiteAdapter for MessageRail.
  *
- * Extracts messages from the Claude.ai DOM using structural CSS selectors.
- * Claude renders conversations with `[data-testid]` attributes on message
- * containers and uses distinct wrappers for human vs assistant turns.
+ * Extracts messages from the Claude.ai DOM. Claude renders conversations
+ * using message bubbles with data-testid attributes and font-* classes.
+ *
+ * Known DOM structure (as of 2025):
+ * - User messages: [data-testid="user-message"] with class .font-user-message
+ * - Assistant messages: [data-testid="assistant-message"] or elements with
+ *   class .font-claude-message
+ * - Parent bubble: [data-user-message-bubble="true"]
+ * - Text content: <p class="whitespace-pre-wrap break-words">
  */
 
 import type { SiteAdapter, ChatContext, ObservedMessage, LiveAnchor } from '../types';
@@ -11,21 +17,40 @@ import { generateUID, generateStreamingUID } from '../utils/uid';
 import { normalizeText } from '../utils/normalize';
 
 /**
- * Selector for individual message turn containers.
- * Claude wraps each turn in a div with `data-testid` containing "human" or "assistant".
+ * Selector strategies for message elements, ordered by specificity.
+ * The first strategy that returns results wins.
  */
-const MESSAGE_TURN_SELECTOR = '[data-testid^="human-turn"], [data-testid^="assistant-turn"]';
+const MESSAGE_SELECTOR_STRATEGIES = [
+  // Primary: data-testid for user + font class for assistant (confirmed April 2025)
+  '[data-testid="user-message"], .font-claude-response',
+  // Fallback 1: both as data-testid
+  '[data-testid="user-message"], [data-testid="assistant-message"]',
+  // Fallback 2: font-based class names
+  '.font-user-message, .font-claude-message',
+];
 
 /**
- * Selector for the main conversation thread container.
+ * Selector strategies for the conversation container.
+ * Claude uses deeply nested divs; we look for the scrollable thread area.
  */
-const CHAT_CONTAINER_SELECTOR = '[class*="conversation-content"], main';
+const CONTAINER_SELECTOR_STRATEGIES = [
+  '[role="main"]',
+  'main',
+  // Claude's conversation area is often a scrollable div
+  '[class*="overflow-y-auto"]',
+  '[class*="scroll"]',
+  // Fallback: body
+  'body',
+];
 
 /**
- * Selector for detecting streaming state.
- * Claude shows a stop button while streaming.
+ * Selectors for detecting streaming state.
  */
-const STREAMING_INDICATOR_SELECTOR = 'button[aria-label="Stop Response"], [data-testid="stop-button"]';
+const STREAMING_SELECTORS = [
+  '[data-is-streaming="true"]',
+  'button[aria-label*="Stop"]',
+  '[data-testid="stop-button"]',
+];
 
 /**
  * Debounce interval in milliseconds for MutationObserver callbacks.
@@ -47,22 +72,78 @@ function extractChatId(url: URL): string | null {
 }
 
 /**
- * Determines the role from a message turn element's data-testid attribute.
+ * Finds the conversation container element.
  */
-function resolveRole(element: Element): 'user' | 'assistant' {
-  const testId = element.getAttribute('data-testid') ?? '';
-  return testId.startsWith('human') ? 'user' : 'assistant';
+function findContainer(doc: Document): Element | null {
+  for (const selector of CONTAINER_SELECTOR_STRATEGIES) {
+    const el = doc.querySelector(selector);
+    if (el) return el;
+  }
+  return null;
 }
 
 /**
- * Extracts the text content from a message turn element.
- * Targets the prose content area within the message.
+ * Detects if streaming is currently active.
+ */
+function isStreamingActive(doc: Document): boolean {
+  for (const selector of STREAMING_SELECTORS) {
+    if (doc.querySelector(selector)) return true;
+  }
+  return false;
+}
+
+/**
+ * Attempts to find message elements using multiple selector strategies.
+ */
+function findMessageElements(doc: Document): NodeListOf<Element> | null {
+  for (const strategy of MESSAGE_SELECTOR_STRATEGIES) {
+    const elements = doc.querySelectorAll(strategy);
+    if (elements.length > 0) {
+      return elements;
+    }
+  }
+  return null;
+}
+
+/**
+ * Determines the role from a message element.
+ */
+function resolveRole(element: Element): 'user' | 'assistant' {
+  // Check data-testid
+  const testId = element.getAttribute('data-testid') ?? '';
+  if (testId === 'user-message' || testId.includes('user')) return 'user';
+  if (testId === 'assistant-message' || testId.includes('assistant')) return 'assistant';
+
+  // Check class names
+  const className = element.className ?? '';
+  if (className.includes('font-user-message') || className.includes('user-message')) return 'user';
+  if (className.includes('font-claude-response') || className.includes('font-claude-message') || className.includes('claude')) return 'assistant';
+
+  // Check bubble attributes
+  if (element.hasAttribute('data-user-message-bubble')) return 'user';
+
+  return 'assistant';
+}
+
+/**
+ * Extracts the text content from a message element.
+ * Claude renders text in <p> tags with whitespace-pre-wrap class.
  */
 function extractText(element: Element): string {
-  // Claude renders message content in a nested div with paragraph elements
-  const contentArea = element.querySelector('[class*="message-content"], .prose, [class*="markdown"]');
-  const rawText = (contentArea ?? element).textContent ?? '';
-  return rawText;
+  // Try the whitespace-pre-wrap paragraphs first (confirmed in DOM)
+  const paragraphs = element.querySelectorAll('p.whitespace-pre-wrap');
+  if (paragraphs.length > 0) {
+    return Array.from(paragraphs).map(p => p.textContent ?? '').join('\n');
+  }
+
+  // Try generic paragraph content
+  const allParagraphs = element.querySelectorAll('p');
+  if (allParagraphs.length > 0) {
+    return Array.from(allParagraphs).map(p => p.textContent ?? '').join('\n');
+  }
+
+  // Fallback to full text content
+  return element.textContent ?? '';
 }
 
 /**
@@ -93,19 +174,26 @@ export class ClaudeAdapter implements SiteAdapter {
   }
 
   scanVisible(doc: Document): ObservedMessage[] {
-    const elements = doc.querySelectorAll(MESSAGE_TURN_SELECTOR);
+    const elements = findMessageElements(doc);
+    if (!elements) {
+      return [];
+    }
+
     const url = new URL(doc.URL);
     const chatId = extractChatId(url) ?? 'unknown';
     const messages: ObservedMessage[] = [];
 
-    // Detect if the last assistant message is still streaming
-    const isCurrentlyStreaming = doc.querySelector(STREAMING_INDICATOR_SELECTOR) !== null;
+    const isCurrentlyStreaming = isStreamingActive(doc);
 
     let ordinal = 0;
     elements.forEach((element) => {
-      ordinal++;
       const role = resolveRole(element);
       const text = extractText(element);
+
+      // Skip empty elements
+      if (!text.trim()) return;
+
+      ordinal++;
 
       // Only the last assistant message can be streaming
       const isLastAssistant =
@@ -134,7 +222,7 @@ export class ClaudeAdapter implements SiteAdapter {
   }
 
   observe(doc: Document, onUpdate: (messages: ObservedMessage[]) => void): () => void {
-    const container = doc.querySelector(CHAT_CONTAINER_SELECTOR);
+    const container = findContainer(doc);
     if (!container) {
       console.warn('[MessageRail] Claude chat container not found for observer attachment.');
       return () => {};
@@ -207,7 +295,6 @@ export class ClaudeAdapter implements SiteAdapter {
   }
 
   healthcheck(doc: Document): boolean {
-    const container = doc.querySelector(CHAT_CONTAINER_SELECTOR);
-    return container !== null;
+    return findContainer(doc) !== null;
   }
 }

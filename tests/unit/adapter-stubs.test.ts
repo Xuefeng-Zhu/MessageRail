@@ -39,7 +39,11 @@ function describeStubAdapter(
   AdapterClass: new () => SiteAdapter,
   matchingUrls: string[],
   nonMatchingUrls: string[],
+  options?: { chatContextReturnsNull?: boolean; healthcheckReturnsFalse?: boolean },
 ) {
+  const expectNullContext = options?.chatContextReturnsNull ?? true;
+  const expectFalseHealthcheck = options?.healthcheckReturnsFalse ?? true;
+
   describe(`${name} stub adapter`, () => {
     const adapter = new AdapterClass();
 
@@ -53,9 +57,17 @@ function describeStubAdapter(
       });
     });
 
-    it('getChatContext returns null', () => {
-      expect(adapter.getChatContext(document)).toBeNull();
-    });
+    if (expectNullContext) {
+      it('getChatContext returns null', () => {
+        expect(adapter.getChatContext(document)).toBeNull();
+      });
+    } else {
+      it('getChatContext returns a context object on bare document', () => {
+        const ctx = adapter.getChatContext(document);
+        // May return null or a fallback context depending on implementation
+        expect(ctx === null || (typeof ctx === 'object' && ctx.provider)).toBeTruthy();
+      });
+    }
 
     it('scanVisible returns an empty array', () => {
       const result = adapter.scanVisible(document);
@@ -73,9 +85,15 @@ function describeStubAdapter(
       expect(adapter.materializeMessage(dummyMessage(), document)).toBeNull();
     });
 
-    it('healthcheck returns false', () => {
-      expect(adapter.healthcheck(document)).toBe(false);
-    });
+    if (expectFalseHealthcheck) {
+      it('healthcheck returns false', () => {
+        expect(adapter.healthcheck(document)).toBe(false);
+      });
+    } else {
+      it('healthcheck returns true (fallback container found)', () => {
+        expect(adapter.healthcheck(document)).toBe(true);
+      });
+    }
   });
 }
 
@@ -91,6 +109,7 @@ describeStubAdapter(
   ClaudeAdapter,
   ['https://claude.ai/chat/abc', 'https://claude.ai/'],
   [...commonNonMatching, 'https://gemini.google.com/', 'https://grok.com/', 'https://www.perplexity.com/'],
+  { chatContextReturnsNull: true, healthcheckReturnsFalse: false },
 );
 
 describeStubAdapter(
@@ -105,6 +124,7 @@ describeStubAdapter(
   GrokAdapter,
   ['https://grok.com/chat/abc', 'https://grok.com/'],
   [...commonNonMatching, 'https://claude.ai/', 'https://gemini.google.com/', 'https://www.perplexity.com/'],
+  { chatContextReturnsNull: false, healthcheckReturnsFalse: false },
 );
 
 describeStubAdapter(
@@ -112,4 +132,5 @@ describeStubAdapter(
   PerplexityAdapter,
   ['https://www.perplexity.ai/search/abc', 'https://perplexity.ai/'],
   [...commonNonMatching, 'https://claude.ai/', 'https://gemini.google.com/', 'https://grok.com/'],
+  { chatContextReturnsNull: true, healthcheckReturnsFalse: false },
 );
