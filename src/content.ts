@@ -160,8 +160,8 @@ async function initialize(): Promise<void> {
   messageIndex = new MessageIndex();
   if (chatContext) {
     messageIndex.setChatContext(chatContext.provider, chatContext.chatId);
-    // Load persisted pins for this conversation
-    await messageIndex.loadPins(chatContext.chatId);
+    // Pin loading disabled for now
+    // await messageIndex.loadPins(chatContext.chatId);
   }
 
   // Scan visible messages
@@ -175,10 +175,10 @@ async function initialize(): Promise<void> {
   // Load sidebar collapsed preference
   const collapsed = await preferencesStore.get<boolean>('sidebarCollapsed');
 
-  // Create sidebar with callbacks
+  // Create sidebar with callbacks (pin disabled for now)
   sidebar = new SidebarController({
     onJump: handleJump,
-    onTogglePin: handleTogglePin,
+    // onTogglePin: handleTogglePin,
     onSearch: handleSearch,
     onToggle: handleToggle,
   });

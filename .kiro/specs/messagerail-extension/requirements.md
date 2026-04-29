@@ -126,9 +126,11 @@ MessageRail is a privacy-first Manifest V3 browser extension that adds a univers
 4. WHEN the search input is cleared, THE Sidebar SHALL restore the full message list.
 5. THE search SHALL operate only on locally indexed message data and SHALL NOT make any network requests.
 
-### Requirement 9: Message Pinning and Bookmarks
+### Requirement 9: Message Pinning and Bookmarks (DEFERRED — not in MVP)
 
 **User Story:** As a user, I want to pin important messages so that I can quickly find them later, even across sessions.
+
+> **Note:** This requirement is deferred from the MVP scope. The interfaces and storage schema retain pin support for future implementation, but no pin UI or functionality will be built in the initial release.
 
 #### Acceptance Criteria
 
@@ -138,7 +140,7 @@ MessageRail is a privacy-first Manifest V3 browser extension that adds a univers
 4. THE Sidebar SHALL display pinned messages in a clearly separated pinned section at the top of the message list.
 5. WHEN a message is pinned, THE Sidebar SHALL remove that message from the main (unpinned) message list so it appears only in the pinned section.
 6. WHEN the user clicks the pin button on an already-pinned message, THE MessageRail SHALL remove the pin and delete the pin record from the IndexedDB_Store, and the message SHALL reappear in its original ordinal position in the main message list.
-6. WHEN the user reopens the Sidebar on the same conversation, THE MessageRail SHALL restore previously pinned messages from the IndexedDB_Store.
+7. WHEN the user reopens the Sidebar on the same conversation, THE MessageRail SHALL restore previously pinned messages from the IndexedDB_Store.
 
 ### Requirement 10: Local Storage
 

@@ -75,12 +75,8 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
         // Only user messages are rendered in the sidebar
         const userMessages = messages.filter((m) => m.role === 'user');
 
-        // Count expected items: pinned user messages appear in the pinned section AND
-        // in the main list, so total rendered items = pinnedCount + userMessages.length
-        const pinnedCount = userMessages.filter((m) => m.pinned).length;
-        const expectedCount = userMessages.length > 0
-          ? (pinnedCount > 0 ? pinnedCount + userMessages.length : userMessages.length)
-          : 0;
+        // Count expected items: user messages only (pin section disabled)
+        const expectedCount = userMessages.length;
         expect(listItems.length).toBe(expectedCount);
 
         // Build a map of uid -> message for lookup (user messages only)
@@ -99,9 +95,9 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
           expect(previewEl).not.toBeNull();
           expect(previewEl!.textContent).toBe(msg!.preview);
 
-          // Check pin icon button is present
+          // Pin icon button is not rendered (pin disabled)
           const iconBtns = li.querySelectorAll('.mr-icon-btn');
-          expect(iconBtns.length).toBe(1);
+          expect(iconBtns.length).toBe(0);
         }
 
         // Clean up for next iteration

@@ -37,7 +37,8 @@ const EXPECTED_HOST_PERMISSIONS = [
   'https://claude.ai/*',
   'https://gemini.google.com/*',
   'https://grok.com/*',
-  'https://www.perplexity.com/*',
+  'https://www.perplexity.ai/*',
+  'https://perplexity.ai/*',
 ];
 
 describe('Manifest structure smoke tests', () => {
@@ -89,7 +90,7 @@ describe('Manifest structure smoke tests', () => {
       expect(manifest.content_scripts!.length).toBeGreaterThan(0);
     });
 
-    it('content_scripts matches include all 5 provider domains', () => {
+    it('content_scripts matches include all provider domains', () => {
       const allMatches = manifest.content_scripts!.flatMap(
         (cs) => cs.matches ?? [],
       );
@@ -100,7 +101,7 @@ describe('Manifest structure smoke tests', () => {
   });
 
   describe('host permissions', () => {
-    it('host_permissions includes all 5 provider domains', () => {
+    it('host_permissions includes all provider domains', () => {
       expect(manifest.host_permissions).toBeDefined();
       for (const expected of EXPECTED_HOST_PERMISSIONS) {
         expect(manifest.host_permissions).toContain(expected);

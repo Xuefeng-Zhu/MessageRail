@@ -542,30 +542,7 @@ export class SidebarController {
     // Show only user messages in the sidebar
     const userMessages = messages.filter((m) => m.role === 'user');
 
-    // Separate pinned messages
-    const pinnedMessages = userMessages.filter((m) => m.pinned);
-
-    // Render pinned section if there are pinned messages
-    if (pinnedMessages.length > 0) {
-      const pinnedSection = doc.createElement('div');
-      pinnedSection.className = 'mr-pinned-section';
-
-      const pinnedHeader = doc.createElement('div');
-      pinnedHeader.className = 'mr-pinned-header';
-      pinnedHeader.textContent = 'Pinned';
-      pinnedSection.appendChild(pinnedHeader);
-
-      const pinnedList = doc.createElement('ol');
-      pinnedList.className = 'mr-message-list';
-      pinnedList.setAttribute('aria-label', 'Pinned messages');
-
-      for (const msg of pinnedMessages) {
-        pinnedList.appendChild(this.createMessageItem(doc, msg, assistantResponseMap.get(msg.uid)));
-      }
-
-      pinnedSection.appendChild(pinnedList);
-      this.messageListContainer.appendChild(pinnedSection);
-    }
+    // Pin section disabled for now
 
     // Render user messages
     if (userMessages.length === 0) {
@@ -638,18 +615,9 @@ export class SidebarController {
       li.appendChild(topRow);
     }
 
-    // Preview row: pin marker + message text + pin action button (all on same line)
+    // Preview row: message text (pin disabled for now)
     const previewRow = doc.createElement('div');
     previewRow.className = 'mr-preview-row';
-
-    // Pin marker (visible only when pinned)
-    if (msg.pinned) {
-      const pinMarker = doc.createElement('span');
-      pinMarker.className = 'mr-pin-marker';
-      pinMarker.innerHTML = SidebarController.PIN_FILLED_SVG;
-      pinMarker.setAttribute('aria-label', 'Pinned');
-      previewRow.appendChild(pinMarker);
-    }
 
     // Preview text
     const preview = doc.createElement('span');
@@ -657,24 +625,6 @@ export class SidebarController {
     preview.textContent = msg.preview;
     previewRow.appendChild(preview);
 
-    // Pin toggle button (SVG icon)
-    const actions = doc.createElement('span');
-    actions.className = msg.pinned ? 'mr-actions mr-pinned-visible' : 'mr-actions';
-
-    const pinBtn = doc.createElement('button');
-    pinBtn.className = msg.pinned ? 'mr-action-btn mr-icon-btn mr-pinned-btn' : 'mr-action-btn mr-icon-btn';
-    pinBtn.setAttribute(
-      'aria-label',
-      msg.pinned ? 'Unpin message' : 'Pin message'
-    );
-    pinBtn.innerHTML = msg.pinned ? SidebarController.PIN_FILLED_SVG : SidebarController.PIN_OUTLINE_SVG;
-    pinBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.callbacks.onTogglePin?.(msg.uid);
-    });
-    actions.appendChild(pinBtn);
-
-    previewRow.appendChild(actions);
     li.appendChild(previewRow);
 
     // Assistant response preview (one line)

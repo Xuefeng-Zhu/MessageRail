@@ -110,6 +110,6 @@ describeStubAdapter(
 describeStubAdapter(
   'Perplexity',
   PerplexityAdapter,
-  ['https://www.perplexity.com/search/abc', 'https://www.perplexity.com/'],
+  ['https://www.perplexity.ai/search/abc', 'https://perplexity.ai/'],
   [...commonNonMatching, 'https://claude.ai/', 'https://gemini.google.com/', 'https://grok.com/'],
 );

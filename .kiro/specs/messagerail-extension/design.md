@@ -157,13 +157,13 @@ class MessageIndex {
   /** Returns messages matching a case-insensitive substring search. */
   search(query: string): IndexedMessage[];
 
-  /** Toggles pin state for a message and persists to IndexedDB. */
+  /** Toggles pin state for a message and persists to IndexedDB. (DEFERRED — not in MVP) */
   togglePin(uid: string): Promise<void>;
 
-  /** Returns all pinned messages. */
+  /** Returns all pinned messages. (DEFERRED — not in MVP) */
   getPinned(): IndexedMessage[];
 
-  /** Loads persisted pins from IndexedDB for the current chat. */
+  /** Loads persisted pins from IndexedDB for the current chat. (DEFERRED — not in MVP) */
   loadPins(chatId: string): Promise<void>;
 }
 ```
@@ -493,9 +493,11 @@ Object Store: pins
 
 **Validates: Requirements 8.3**
 
-### Property 10: Pin Toggle Round-Trip
+### Property 10: Pin Toggle Round-Trip (DEFERRED — not in MVP)
 
 *For any* indexed message, pinning it and then unpinning it SHALL result in the message being unpinned and the pin record being absent from the IndexedDB_Store. The message's state after pin+unpin SHALL be equivalent to its state before pinning. Additionally, a pinned message SHALL appear only in the pinned section and NOT in the main message list; unpinning SHALL restore it to its original ordinal position in the main list.
+
+> **Note:** This property is deferred from the MVP. Pin functionality will be implemented in a future release.
 
 **Validates: Requirements 9.5**
 

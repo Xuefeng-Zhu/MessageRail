@@ -101,10 +101,10 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - `update(incoming)`: normalize text, generate UIDs, assign sequential ordinals starting from 1, deduplicate by UID, update existing streaming messages in-place
     - `getAll()`: return all messages sorted by ordinal
     - `search(query)`: case-insensitive substring match on normalized text
-    - `togglePin(uid)`: toggle pin state, persist to IndexedDB (storage wired in later task)
-    - `getPinned()`: return pinned messages
-    - `loadPins(chatId)`: load persisted pins from storage
-    - _Requirements: 5.1, 5.2, 5.3, 5.4, 8.3, 8.5, 9.1, 9.5, 15.3_
+    - `togglePin(uid)`: toggle pin state, persist to IndexedDB (DEFERRED — not in MVP)
+    - `getPinned()`: return pinned messages (DEFERRED — not in MVP)
+    - `loadPins(chatId)`: load persisted pins from storage (DEFERRED — not in MVP)
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 8.3, 8.5, 15.3_
   - [x] 6.2 Write property test for ordinal assignment stability
     - **Property 6: Ordinal Assignment Stability**
     - Verify ordinals are sequential from 1 and existing ordinals never change when new messages are added
@@ -141,7 +141,7 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - Test get/set with mocked `chrome.storage.local`
     - Test fallback to defaults when storage is unavailable
     - _Requirements: 10.2_
-  - [x] 8.5 Write property test for pin toggle round-trip
+  - [x] 8.5 Write property test for pin toggle round-trip (DEFERRED — not in MVP)
     - **Property 10: Pin Toggle Round-Trip**
     - Verify that pinning then unpinning a message results in the message being unpinned and the pin record absent from storage
     - **Validates: Requirements 9.5**
@@ -161,10 +161,8 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - `render(messages)`: display each `IndexedMessage` as a list item with ordinal, role label, and text preview (~80 chars)
     - Use semantic list markup (`ol` or `ul` with `li`)
     - Show streaming indicator for messages with `status: 'streaming'`; remove on `status: 'complete'`
-    - Show visual pin marker on pinned messages; render pinned section at top; pinned messages do NOT appear in the main (unpinned) list
-    - Include a pin toggle button on each message item (keyboard-focusable, accessible label); unpinning restores the message to its ordinal position in the main list
     - Include a jump button on each message item (keyboard-focusable, accessible label)
-    - _Requirements: 6.3, 6.4, 6.6, 6.7, 9.1, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2_
+    - _Requirements: 6.3, 6.4, 6.6, 6.7, 12.3, 12.4, 15.1, 15.2_
   - [x] 10.3 Write property test for sidebar rendering completeness
     - **Property 8: Sidebar Message Rendering Completeness**
     - Verify that for any IndexedMessage, the rendered list item contains the ordinal, role label, and text preview
@@ -187,8 +185,7 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - Test accessibility: root element is `aside` with correct `aria-label`, buttons are keyboard-focusable
     - Test streaming indicator display and removal
     - Test search input has accessible label, clearing restores full list
-    - Test pinned messages section renders at top with visual marker
-    - _Requirements: 6.3, 6.5, 6.6, 6.7, 8.1, 8.2, 8.4, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2_
+    - _Requirements: 6.3, 6.5, 6.6, 6.7, 8.1, 8.2, 8.4, 12.3, 12.4, 15.1, 15.2_
 
 - [x] 11. LiveAnchor and jump-to-message navigation
   - [x] 11.1 Implement `LiveAnchor` in `src/ui/live-anchor.ts`
@@ -218,13 +215,12 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - Call `getChatContext`, `scanVisible`, pass messages to `MessageIndex.update`, render via `SidebarController`
     - Call `observe` to attach MutationObserver; pipe updates through `MessageIndex.update` → `SidebarController.render`
     - Wire jump-to-message: on sidebar item click, call `adapter.materializeMessage` → `LiveAnchor.scrollIntoView`
-    - Wire pin toggle: on pin button click, call `MessageIndex.togglePin`
     - Wire search: sidebar search input → `MessageIndex.search` → `SidebarController.render`
     - Listen for `chrome.runtime.onMessage` for toggle-sidebar and focus-search commands
     - Handle SPA navigation: detect URL changes via `popstate`/`hashchange`, tear down observer, reinitialize
     - Handle `healthcheck` failure: disable observer, show banner in sidebar
     - Handle extension update disconnection gracefully
-    - _Requirements: 4.1, 6.1, 7.1, 8.3, 9.2, 9.6, 13.4, 13.5_
+    - _Requirements: 4.1, 6.1, 7.1, 8.3, 13.4, 13.5_
   - [x] 13.3 Write unit tests for keyboard shortcut manifest commands
     - Verify manifest commands don't conflict with reserved browser shortcuts (Ctrl+F, Cmd+F, Ctrl+T, Cmd+T, Ctrl+W, Cmd+W)
     - _Requirements: 13.3_

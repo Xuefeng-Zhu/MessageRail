@@ -113,26 +113,22 @@ describe('SidebarController', () => {
       expect(aside!.getAttribute('aria-label')).toBe('MessageRail message index');
     });
 
-    it('pin buttons have aria-label "Pin message" for unpinned messages', () => {
+    it('pin buttons are not rendered (pin disabled)', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([makeMessage({ pinned: false })]);
 
       const pinBtns = shadowQueryAll(controller, '.mr-action-btn');
-      // First action button is the pin button
-      const pinBtn = pinBtns[0];
-      expect(pinBtn.getAttribute('aria-label')).toBe('Pin message');
+      expect(pinBtns.length).toBe(0);
     });
 
-    it('pin buttons have aria-label "Unpin message" for pinned messages', () => {
+    it('pin buttons are not rendered for pinned messages (pin disabled)', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([makeMessage({ pinned: true })]);
 
-      // Pinned section has its own list; get the first pin button from the pinned section
-      const pinnedPinBtns = shadowQueryAll(controller, '.mr-pinned-section .mr-action-btn');
-      const pinBtn = pinnedPinBtns[0];
-      expect(pinBtn.getAttribute('aria-label')).toBe('Unpin message');
+      const pinBtns = shadowQueryAll(controller, '.mr-action-btn');
+      expect(pinBtns.length).toBe(0);
     });
 
     it('message items are keyboard-focusable for jump navigation', () => {
@@ -234,10 +230,10 @@ describe('SidebarController', () => {
     });
   });
 
-  // ── 6. Pinned messages ─────────────────────────────────────────────
+  // ── 6. Pinned messages (disabled) ──────────────────────────────────
 
   describe('pinned messages', () => {
-    it('pinned messages render in a .mr-pinned-section at the top', () => {
+    it('pinned section is NOT rendered (pin disabled)', () => {
       controller = new SidebarController();
       controller.mount(document);
 
@@ -248,26 +244,17 @@ describe('SidebarController', () => {
       controller.render(messages);
 
       const pinnedSection = shadowQuery(controller, '.mr-pinned-section');
-      expect(pinnedSection).not.toBeNull();
-
-      // Pinned section should come before the main message list
-      const container = shadowQuery(controller, '.mr-message-list-container');
-      const children = Array.from(container!.children);
-      const pinnedIndex = children.indexOf(pinnedSection!);
-      const mainList = shadowQuery(controller, '.mr-message-list-container > ol.mr-message-list');
-      const mainIndex = children.indexOf(mainList!);
-      expect(pinnedIndex).toBeLessThan(mainIndex);
+      expect(pinnedSection).toBeNull();
     });
 
-    it('pinned messages show a pin marker', () => {
+    it('pin markers are NOT rendered (pin disabled)', () => {
       controller = new SidebarController();
       controller.mount(document);
 
       controller.render([makeMessage({ pinned: true })]);
 
       const pinMarker = shadowQuery(controller, '.mr-pin-marker');
-      expect(pinMarker).not.toBeNull();
-      expect(pinMarker!.querySelector('svg')).not.toBeNull();
+      expect(pinMarker).toBeNull();
     });
 
     it('unpinned messages do NOT show a pin marker', () => {
@@ -326,9 +313,9 @@ describe('SidebarController', () => {
       expect(preview).not.toBeNull();
       expect(preview!.textContent).toBe('Test preview text');
 
-      // Icon buttons are present (pin only, jump is via item click)
+      // Icon buttons are not present (pin is disabled)
       const iconBtns = item!.querySelectorAll('.mr-icon-btn');
-      expect(iconBtns.length).toBe(1);
+      expect(iconBtns.length).toBe(0);
     });
 
     it('does not render assistant messages in the list', () => {
@@ -375,30 +362,28 @@ describe('SidebarController', () => {
       expect(onJump).toHaveBeenCalledWith('jump-uid');
     });
 
-    it('onJump does NOT fire when pin button is clicked', () => {
+    it('onJump does NOT fire when pin button is clicked (pin disabled — button absent)', () => {
       const onJump = vi.fn();
       const onTogglePin = vi.fn();
       controller = new SidebarController({ onJump, onTogglePin });
       controller.mount(document);
       controller.render([makeMessage({ uid: 'pin-uid' })]);
 
-      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn') as HTMLButtonElement;
-      pinBtn.click();
-
-      expect(onTogglePin).toHaveBeenCalledWith('pin-uid');
-      expect(onJump).not.toHaveBeenCalled();
+      // Pin button should not exist since pin is disabled
+      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn');
+      expect(pinBtn).toBeNull();
     });
 
-    it('onTogglePin fires when pin button is clicked', () => {
+    it('onTogglePin does not fire (pin disabled — button absent)', () => {
       const onTogglePin = vi.fn();
       controller = new SidebarController({ onTogglePin });
       controller.mount(document);
       controller.render([makeMessage({ uid: 'pin-uid' })]);
 
-      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn') as HTMLButtonElement;
-      pinBtn.click();
-
-      expect(onTogglePin).toHaveBeenCalledWith('pin-uid');
+      // Pin button should not exist since pin is disabled
+      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn');
+      expect(pinBtn).toBeNull();
+      expect(onTogglePin).not.toHaveBeenCalled();
     });
   });
 
