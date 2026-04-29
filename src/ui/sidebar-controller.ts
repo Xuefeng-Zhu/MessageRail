@@ -19,6 +19,17 @@ export interface SidebarCallbacks {
   onToggle?: () => void;
 }
 
+export type SidebarEmptyState =
+  | 'waiting'
+  | 'no-messages'
+  | 'no-results'
+  | 'healthcheck-failed';
+
+export interface SidebarRenderOptions {
+  emptyState?: SidebarEmptyState;
+  searchQuery?: string;
+}
+
 /**
  * CSS styles for the sidebar, rendered entirely within the Shadow DOM.
  * Uses CSS custom properties and prefers-color-scheme for light/dark support.
@@ -98,34 +109,36 @@ const SIDEBAR_STYLES = `
     pointer-events: none;
   }
 
-  /* ── Floating action button (visible when collapsed) ── */
+  /* ── Right-edge rail button (visible when collapsed) ── */
 
   .mr-fab {
     display: none;
     position: fixed;
-    right: 16px;
-    bottom: 24px;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: none;
-    background: var(--mr-accent);
-    color: #ffffff;
+    right: 0;
+    top: 50%;
+    width: 34px;
+    height: 88px;
+    border-radius: var(--mr-radius) 0 0 var(--mr-radius);
+    border: 1px solid var(--mr-border);
+    border-right: none;
+    background: var(--mr-bg);
+    color: var(--mr-accent);
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.14);
     align-items: center;
     justify-content: center;
     font-family: var(--mr-font-family);
     font-size: 18px;
     line-height: 1;
     transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    transform: translateY(-50%);
     z-index: 2147483647;
   }
 
   .mr-fab:hover {
-    background: var(--mr-accent-hover);
-    transform: scale(1.08);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    background: var(--mr-bg-hover);
+    transform: translateY(-50%) translateX(-2px);
+    box-shadow: -4px 0 14px rgba(0, 0, 0, 0.18);
   }
 
   .mr-fab:focus-visible {
@@ -134,7 +147,7 @@ const SIDEBAR_STYLES = `
   }
 
   .mr-fab:active {
-    transform: scale(0.96);
+    transform: translateY(-50%) translateX(0);
   }
 
   .mr-fab.mr-fab-visible {
@@ -346,6 +359,25 @@ const SIDEBAR_STYLES = `
     min-height: 22px;
   }
 
+  .mr-ordinal {
+    flex: 0 0 auto;
+    min-width: 26px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--mr-radius-sm);
+    border: 1px solid var(--mr-border);
+    background: var(--mr-bg-secondary);
+    color: var(--mr-text-secondary);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
   .mr-pin-marker {
     flex-shrink: 0;
     display: flex;
@@ -434,6 +466,7 @@ const SIDEBAR_STYLES = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-left: 34px;
     padding-left: 8px;
     border-left: 2px solid var(--mr-border);
     line-height: 1.4;
@@ -446,7 +479,32 @@ const SIDEBAR_STYLES = `
     color: var(--mr-text-tertiary);
     font-size: 12px;
   }
+
+  .mr-empty-title {
+    color: var(--mr-text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .mr-empty-detail {
+    line-height: 1.4;
+  }
 `;
+
+const EMPTY_STATE_TITLES: Record<SidebarEmptyState, string> = {
+  waiting: 'Waiting for messages',
+  'no-messages': 'No messages indexed yet',
+  'no-results': 'No matching messages',
+  'healthcheck-failed': 'MessageRail needs a reload',
+};
+
+const EMPTY_STATE_DETAILS: Record<SidebarEmptyState, string> = {
+  waiting: 'The index will appear when the conversation loads.',
+  'no-messages': 'Start or open a conversation to build the index.',
+  'no-results': 'Try a different search.',
+  'healthcheck-failed': 'Page structure changed. Reload the page to retry.',
+};
 
 /**
  * SidebarController manages the Shadow DOM host element, renders the
@@ -575,13 +633,13 @@ export class SidebarController {
   /**
    * Re-renders the message list from the provided messages.
    *
-   * Displays pinned messages in a separate section at the top,
-   * then all messages below. Each item includes ordinal, role label,
-   * preview, pin marker, streaming indicator, and action buttons.
+   * Displays user messages with ordinal badges and assistant previews.
+   * Empty render states are explicit so search and health failures can
+   * explain themselves distinctly.
    *
    * Requirements: 6.3, 6.4, 6.6, 6.7, 9.1, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2
    */
-  render(messages: IndexedMessage[]): void {
+  render(messages: IndexedMessage[], options: SidebarRenderOptions = {}): void {
     if (!this.messageListContainer || !this.shadowRoot) {
       return;
     }
@@ -613,10 +671,9 @@ export class SidebarController {
 
     // Render user messages
     if (userMessages.length === 0) {
-      const emptyState = doc.createElement('div');
-      emptyState.className = 'mr-empty-state';
-      emptyState.textContent = 'No messages indexed yet.';
-      this.messageListContainer.appendChild(emptyState);
+      this.messageListContainer.appendChild(
+        this.createEmptyState(doc, options.emptyState ?? 'no-messages', options.searchQuery),
+      );
       return;
     }
 
@@ -646,7 +703,7 @@ export class SidebarController {
     li.dataset.uid = msg.uid;
     li.setAttribute('role', 'button');
     li.setAttribute('tabindex', '0');
-    li.setAttribute('aria-label', `Jump to message: ${msg.preview}`);
+    li.setAttribute('aria-label', `Jump to message ${msg.ordinal}: ${msg.preview}`);
 
     // Click anywhere on the item to jump
     li.addEventListener('click', (e) => {
@@ -686,6 +743,12 @@ export class SidebarController {
     const previewRow = doc.createElement('div');
     previewRow.className = 'mr-preview-row';
 
+    const ordinal = doc.createElement('span');
+    ordinal.className = 'mr-ordinal';
+    ordinal.textContent = `#${msg.ordinal}`;
+    ordinal.setAttribute('aria-hidden', 'true');
+    previewRow.appendChild(ordinal);
+
     // Preview text
     const preview = doc.createElement('span');
     preview.className = 'mr-preview';
@@ -703,6 +766,31 @@ export class SidebarController {
     }
 
     return li;
+  }
+
+  private createEmptyState(
+    doc: Document,
+    state: SidebarEmptyState,
+    searchQuery?: string,
+  ): HTMLDivElement {
+    const emptyState = doc.createElement('div');
+    emptyState.className = `mr-empty-state mr-empty-${state}`;
+
+    const title = doc.createElement('div');
+    title.className = 'mr-empty-title';
+    title.textContent = EMPTY_STATE_TITLES[state];
+    emptyState.appendChild(title);
+
+    const detail = doc.createElement('div');
+    detail.className = 'mr-empty-detail';
+    const trimmedQuery = searchQuery?.trim() ?? '';
+    detail.textContent =
+      state === 'no-results' && trimmedQuery
+        ? `No matches for "${trimmedQuery}".`
+        : EMPTY_STATE_DETAILS[state];
+    emptyState.appendChild(detail);
+
+    return emptyState;
   }
 
   /**

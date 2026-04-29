@@ -305,7 +305,7 @@ describe('SidebarController', () => {
       expect(ol!.tagName.toLowerCase()).toBe('ol');
     });
 
-    it('each item has preview and icon action buttons', () => {
+    it('each item has an ordinal badge, preview, and no pin action buttons', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([
@@ -315,10 +315,12 @@ describe('SidebarController', () => {
       const item = shadowQuery(controller, '.mr-message-item');
       expect(item).not.toBeNull();
 
-      // No ordinal or role label rendered
+      // Ordinal badge is present
       const ordinal = item!.querySelector('.mr-ordinal');
-      expect(ordinal).toBeNull();
+      expect(ordinal).not.toBeNull();
+      expect(ordinal!.textContent).toBe('#3');
 
+      // No role label rendered
       const role = item!.querySelector('.mr-role');
       expect(role).toBeNull();
 
@@ -358,6 +360,29 @@ describe('SidebarController', () => {
 
       const emptyState = shadowQuery(controller, '.mr-empty-state');
       expect(emptyState).not.toBeNull();
+      expect(emptyState!.textContent).toContain('No messages indexed yet');
+    });
+
+    it('shows no-results empty state for empty search results', () => {
+      controller = new SidebarController();
+      controller.mount(document);
+      controller.render([], { emptyState: 'no-results', searchQuery: 'needle' });
+
+      const emptyState = shadowQuery(controller, '.mr-empty-state');
+      expect(emptyState).not.toBeNull();
+      expect(emptyState!.textContent).toContain('No matching messages');
+      expect(emptyState!.textContent).toContain('No matches for "needle".');
+    });
+
+    it('shows healthcheck failure empty state when requested', () => {
+      controller = new SidebarController();
+      controller.mount(document);
+      controller.render([], { emptyState: 'healthcheck-failed' });
+
+      const emptyState = shadowQuery(controller, '.mr-empty-state');
+      expect(emptyState).not.toBeNull();
+      expect(emptyState!.textContent).toContain('MessageRail needs a reload');
+      expect(emptyState!.textContent).toContain('Page structure changed.');
     });
   });
 

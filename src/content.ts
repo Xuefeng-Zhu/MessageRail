@@ -17,7 +17,7 @@ import { GeminiAdapter } from './adapters/gemini';
 import { GrokAdapter } from './adapters/grok';
 import { PerplexityAdapter } from './adapters/perplexity';
 import { MessageIndex } from './core/message-index';
-import { SidebarController } from './ui/sidebar-controller';
+import { SidebarController, type SidebarEmptyState } from './ui/sidebar-controller';
 import { filterMessagesForSidebarSearch } from './ui/sidebar-search';
 import { PreferencesStore } from './storage/preferences-store';
 
@@ -57,6 +57,9 @@ let lastUrl: string = '';
 
 /** Preferences store instance. */
 const preferencesStore = new PreferencesStore();
+
+/** Current sidebar search query, preserved across live updates. */
+let currentSearchQuery: string = '';
 
 // ── Adapter Registry Setup ─────────────────────────────────────────
 
@@ -137,6 +140,7 @@ function teardown(): void {
 
   messageIndex = null;
   currentAdapter = null;
+  currentSearchQuery = '';
 }
 
 // ── Initialization ─────────────────────────────────────────────────
@@ -186,6 +190,7 @@ async function initialize(): Promise<void> {
 
   currentAdapter = adapter;
   messageIndex = nextMessageIndex;
+  currentSearchQuery = '';
 
   // Create sidebar with callbacks (pin disabled for now)
   sidebar = new SidebarController({
@@ -203,7 +208,7 @@ async function initialize(): Promise<void> {
     sidebar.toggle();
   }
 
-  sidebar.render(nextMessageIndex.getAll());
+  renderSidebarMessages('waiting');
 
   // Attach live observer
   try {
@@ -257,7 +262,7 @@ async function handleTogglePin(uid: string): Promise<void> {
   if (!messageIndex || !sidebar) return;
 
   await messageIndex.togglePin(uid);
-  sidebar.render(messageIndex.getAll());
+  renderSidebarMessages();
 }
 
 /**
@@ -267,14 +272,8 @@ async function handleTogglePin(uid: string): Promise<void> {
 function handleSearch(query: string): void {
   if (!messageIndex || !sidebar) return;
 
-  if (query.trim() === '') {
-    sidebar.render(messageIndex.getAll());
-  } else {
-    const searchResults = messageIndex.search(query);
-    const allMessages = messageIndex.getAll();
-    const filtered = filterMessagesForSidebarSearch(allMessages, searchResults);
-    sidebar.render(filtered);
-  }
+  currentSearchQuery = query;
+  renderSidebarMessages();
 }
 
 /**
@@ -296,7 +295,7 @@ function handleObserverUpdate(messages: ObservedMessage[]): void {
 
   try {
     messageIndex.update(messages);
-    sidebar.render(messageIndex.getAll());
+    renderSidebarMessages();
   } catch (err) {
     console.error('[MessageRail] Error processing observer update:', err);
   }
@@ -325,9 +324,7 @@ function startHealthcheck(adapter: SiteAdapter): void {
       // Show banner in sidebar
       if (sidebar) {
         const bannerMessages: IndexedMessage[] = [];
-        sidebar.render(bannerMessages);
-        // The empty render signals the "no messages" state.
-        // For a more explicit banner, we log and let the empty state show.
+        sidebar.render(bannerMessages, { emptyState: 'healthcheck-failed' });
         console.warn(
           '[MessageRail] Healthcheck failed — page structure changed. Reload to retry.'
         );
@@ -340,6 +337,28 @@ function startHealthcheck(adapter: SiteAdapter): void {
       }
     }
   }, HEALTHCHECK_INTERVAL_MS);
+}
+
+/**
+ * Renders the sidebar while preserving the current search filter.
+ */
+function renderSidebarMessages(emptyState: SidebarEmptyState = 'no-messages'): void {
+  if (!messageIndex || !sidebar) return;
+
+  const query = currentSearchQuery.trim();
+  const allMessages = messageIndex.getAll();
+
+  if (query === '') {
+    sidebar.render(allMessages, { emptyState });
+    return;
+  }
+
+  const searchResults = messageIndex.search(currentSearchQuery);
+  const filtered = filterMessagesForSidebarSearch(allMessages, searchResults);
+  sidebar.render(filtered, {
+    emptyState: filtered.length === 0 ? 'no-results' : emptyState,
+    searchQuery: currentSearchQuery,
+  });
 }
 
 // ── Chrome Runtime Messages ────────────────────────────────────────
