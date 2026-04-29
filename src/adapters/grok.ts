@@ -4,8 +4,9 @@
  * Extracts messages from the Grok (grok.com) DOM.
  *
  * Known DOM structure (as of 2025):
- * - User messages: [data-testid="user-message"] with class .message-bubble
- * - Assistant responses: .response-content-markdown.markdown
+ * - Message bubbles: .message-bubble, aligned with items-end/items-start
+ * - User messages: [data-testid="user-message"] or right-aligned .message-bubble
+ * - Assistant responses: .response-content-markdown.markdown inside a .message-bubble
  *   wrapped in a parent with id="response-<uuid>"
  * - Text content: elements with class .break-words, white-space: pre-wrap
  * - Readability marker: [data-nn-readability-processed="true"]
@@ -16,20 +17,14 @@ import { generateUID, generateStreamingUID } from '../utils/uid';
 import { normalizeText } from '../utils/normalize';
 
 /**
- * Selector for user message elements.
+ * Selector strategies for message elements, ordered from current Grok
+ * structure to broader fallbacks.
  */
-const USER_MESSAGE_SELECTOR = '[data-testid="user-message"]';
-
-/**
- * Selector for assistant response content.
- * Grok renders assistant responses in .response-content-markdown elements.
- */
-const ASSISTANT_MESSAGE_SELECTOR = '.response-content-markdown';
-
-/**
- * Combined selector for all messages.
- */
-const ALL_MESSAGES_SELECTOR = `${USER_MESSAGE_SELECTOR}, ${ASSISTANT_MESSAGE_SELECTOR}`;
+const MESSAGE_SELECTOR_STRATEGIES = [
+  '.message-bubble',
+  '[data-testid="user-message"], .response-content-markdown',
+  '[data-testid*="message"], [data-message-author-role], [data-role], div[id^="response-"]',
+];
 
 /**
  * Selector strategies for the conversation container.
@@ -103,16 +98,49 @@ function isStreamingActive(doc: Document): boolean {
 }
 
 /**
+ * Attempts to find Grok message elements using multiple selector strategies.
+ */
+function findMessageElements(doc: Document): Element[] {
+  for (const strategy of MESSAGE_SELECTOR_STRATEGIES) {
+    const elements = Array.from(doc.querySelectorAll(strategy)).filter((element) =>
+      Boolean(element.textContent?.trim())
+    );
+    if (elements.length > 0) {
+      return elements;
+    }
+  }
+  return [];
+}
+
+/**
+ * Returns true if any class token contains the requested substring.
+ */
+function hasClassPart(element: Element, part: string): boolean {
+  return Array.from(element.classList).some((className) => className.includes(part));
+}
+
+/**
  * Determines the role from a message element.
  */
 function resolveRole(element: Element): 'user' | 'assistant' {
-  // User messages have data-testid="user-message"
-  const testId = element.getAttribute('data-testid');
-  if (testId === 'user-message') return 'user';
+  const testId = element.getAttribute('data-testid') ?? '';
+  if (testId.includes('user')) return 'user';
+  if (testId.includes('assistant')) return 'assistant';
 
-  // Assistant responses have class response-content-markdown
-  const className = element.className ?? '';
-  if (className.includes('response-content-markdown')) return 'assistant';
+  const authorRole = element.getAttribute('data-message-author-role');
+  if (authorRole === 'user') return 'user';
+  if (authorRole === 'assistant') return 'assistant';
+
+  const dataRole = element.getAttribute('data-role');
+  if (dataRole === 'user') return 'user';
+  if (dataRole === 'assistant') return 'assistant';
+
+  if (hasClassPart(element, 'items-end')) return 'user';
+  if (hasClassPart(element, 'items-start')) return 'assistant';
+
+  if (element.matches('.response-content-markdown') || element.querySelector('.response-content-markdown')) {
+    return 'assistant';
+  }
 
   return 'assistant';
 }
@@ -120,20 +148,41 @@ function resolveRole(element: Element): 'user' | 'assistant' {
 /**
  * Extracts the text content from a message element.
  */
-function extractText(element: Element): string {
-  // For assistant messages (.response-content-markdown), the text is directly inside
-  const className = element.className ?? '';
-  if (className.includes('response-content-markdown')) {
+function extractText(element: Element, role: 'user' | 'assistant'): string {
+  if (role === 'assistant') {
+    const markdown = element.matches('.response-content-markdown')
+      ? element
+      : element.querySelector('.response-content-markdown');
+    if (markdown) {
+      return markdown.textContent ?? '';
+    }
+  }
+
+  if (element.matches('.response-content-markdown')) {
     return element.textContent ?? '';
   }
 
-  // For user messages, look for break-words paragraphs or direct text
-  const breakWords = element.querySelector('.break-words, p');
-  if (breakWords) {
-    return breakWords.textContent ?? '';
+  const content = element.querySelector('.break-words, .whitespace-pre-wrap, p');
+  if (content) {
+    return content.textContent ?? '';
   }
 
   return element.textContent ?? '';
+}
+
+/**
+ * Extracts a provider-native ID from the message or its response wrapper.
+ */
+function extractNativeId(element: Element): string | null {
+  if (element.id) return element.id;
+  const responseWrapper = element.closest('[id^="response-"]');
+  if (responseWrapper?.id) return responseWrapper.id;
+  return (
+    element.getAttribute('data-message-id') ??
+    element.getAttribute('data-testid') ??
+    element.getAttribute('data-role') ??
+    null
+  );
 }
 
 /**
@@ -166,7 +215,7 @@ export class GrokAdapter implements SiteAdapter {
   }
 
   scanVisible(doc: Document): ObservedMessage[] {
-    const elements = doc.querySelectorAll(ALL_MESSAGES_SELECTOR);
+    const elements = findMessageElements(doc);
     if (elements.length === 0) {
       return [];
     }
@@ -180,7 +229,7 @@ export class GrokAdapter implements SiteAdapter {
     let ordinal = 0;
     elements.forEach((element) => {
       const role = resolveRole(element);
-      const text = extractText(element);
+      const text = extractText(element, role);
 
       // Skip empty elements
       if (!text.trim()) return;
@@ -193,7 +242,7 @@ export class GrokAdapter implements SiteAdapter {
         isCurrentlyStreaming;
 
       const status: 'streaming' | 'complete' = isLastAssistant ? 'streaming' : 'complete';
-      const nativeId = element.id || element.getAttribute('data-testid') || null;
+      const nativeId = extractNativeId(element);
 
       const uid = status === 'streaming'
         ? generateStreamingUID('grok', chatId, role, ordinal)

@@ -5,7 +5,7 @@
  * Perplexity renders a thread of query/answer pairs.
  *
  * Known DOM structure (as of 2025):
- * - User queries: div.break-words inside a text-foreground selection container
+ * - User queries: span.select-text inside a group/title container
  * - Assistant answers: div[id^="markdown-content-"] with class gap-y-md
  * - The thread is inside a scrollable main area
  * - URL pattern: /search/<uuid>
@@ -15,17 +15,30 @@ import type { SiteAdapter, ChatContext, ObservedMessage, LiveAnchor } from '../t
 import { generateUID, generateStreamingUID } from '../utils/uid';
 import { normalizeText } from '../utils/normalize';
 
+interface MessageCandidate {
+  element: Element;
+  role: 'user' | 'assistant';
+}
+
 /**
- * Selector for assistant answer content.
+ * Selector strategies for assistant answer content.
  * Perplexity uses id="markdown-content-N" for each answer block.
  */
-const ASSISTANT_SELECTOR = '[id^="markdown-content-"]';
+const ASSISTANT_SELECTOR_STRATEGIES = [
+  '[id^="markdown-content-"]',
+  '[class*="prose"]',
+];
 
 /**
  * Selector strategies for user query elements.
  * Perplexity wraps user queries in styled containers.
  */
-const USER_QUERY_SELECTOR = '[class*="break-words"][class*="word-break"]';
+const USER_QUERY_SELECTOR_STRATEGIES = [
+  '[class~="group/title"] span.select-text',
+  '[class~="group/title"]',
+  '[class*="break-words"][class*="word-break"]',
+  '[class*="break-words"]',
+];
 
 /**
  * Selector strategies for the conversation container.
@@ -95,50 +108,54 @@ function isStreamingActive(doc: Document): boolean {
 }
 
 /**
+ * Returns elements found by the first selector strategy with results.
+ */
+function findByStrategies(doc: Document, strategies: string[]): Element[] {
+  for (const selector of strategies) {
+    const elements = Array.from(doc.querySelectorAll(selector)).filter((element) =>
+      Boolean(element.textContent?.trim())
+    );
+    if (elements.length > 0) {
+      return elements;
+    }
+  }
+  return [];
+}
+
+/**
+ * Sorts candidate message elements in DOM order.
+ */
+function compareDomOrder(a: Element, b: Element): number {
+  if (a === b) return 0;
+  const position = a.compareDocumentPosition(b);
+  if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+  if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+  return 0;
+}
+
+/**
+ * Returns true when an element is nested inside one of the assistant blocks.
+ */
+function isInsideAssistant(element: Element, assistantElements: Element[]): boolean {
+  return assistantElements.some((assistant) => assistant !== element && assistant.contains(element));
+}
+
+/**
  * Scans for all message elements (user queries + assistant answers)
  * and returns them in DOM order.
  */
-function findAllMessages(doc: Document): { element: Element; role: 'user' | 'assistant' }[] {
-  const results: { element: Element; role: 'user' | 'assistant' }[] = [];
+function findAllMessages(doc: Document): MessageCandidate[] {
+  const assistantElements = findByStrategies(doc, ASSISTANT_SELECTOR_STRATEGIES);
+  const userElements = findByStrategies(doc, USER_QUERY_SELECTOR_STRATEGIES).filter(
+    (element) => !isInsideAssistant(element, assistantElements)
+  );
 
-  // Find all assistant answer blocks
-  const assistantElements = doc.querySelectorAll(ASSISTANT_SELECTOR);
+  const candidates: MessageCandidate[] = [
+    ...userElements.map((element) => ({ element, role: 'user' as const })),
+    ...assistantElements.map((element) => ({ element, role: 'assistant' as const })),
+  ];
 
-  // For each assistant answer, find the preceding user query.
-  // Perplexity structures each Q&A pair in a container.
-  // We walk up from each markdown-content to find the query text.
-  const seenUserElements = new Set<Element>();
-
-  assistantElements.forEach((assistantEl) => {
-    // Walk up to find the Q&A pair container, then look for the user query within it
-    let container = assistantEl.parentElement;
-    // Walk up a few levels to find the pair container
-    for (let i = 0; i < 8 && container; i++) {
-      // Look for a user query element at this level
-      const userQuery = container.querySelector(USER_QUERY_SELECTOR);
-      if (userQuery && !seenUserElements.has(userQuery) && userQuery.textContent?.trim()) {
-        seenUserElements.add(userQuery);
-        results.push({ element: userQuery, role: 'user' });
-        break;
-      }
-      container = container.parentElement;
-    }
-
-    results.push({ element: assistantEl, role: 'assistant' });
-  });
-
-  // If we found assistant messages but no user queries via traversal,
-  // try a direct query for user elements
-  if (results.filter(r => r.role === 'user').length === 0) {
-    const userElements = doc.querySelectorAll(USER_QUERY_SELECTOR);
-    userElements.forEach((el) => {
-      if (el.textContent?.trim() && !el.closest(ASSISTANT_SELECTOR)) {
-        results.unshift({ element: el, role: 'user' });
-      }
-    });
-  }
-
-  return results;
+  return candidates.sort((a, b) => compareDomOrder(a.element, b.element));
 }
 
 /**
@@ -146,6 +163,20 @@ function findAllMessages(doc: Document): { element: Element; role: 'user' | 'ass
  */
 function extractText(element: Element): string {
   return element.textContent ?? '';
+}
+
+/**
+ * Extracts a provider-native ID from the message element when present.
+ */
+function extractNativeId(element: Element): string | null {
+  if (element.id) return element.id;
+  const nativeWrapper = element.closest('[data-message-id], [data-testid], [id^="markdown-content-"]');
+  return (
+    nativeWrapper?.getAttribute('data-message-id') ??
+    nativeWrapper?.getAttribute('data-testid') ??
+    nativeWrapper?.id ??
+    null
+  );
 }
 
 /**
@@ -202,7 +233,7 @@ export class PerplexityAdapter implements SiteAdapter {
         isCurrentlyStreaming;
 
       const status: 'streaming' | 'complete' = isLastAssistant ? 'streaming' : 'complete';
-      const nativeId = element.id || null;
+      const nativeId = extractNativeId(element);
 
       const uid = status === 'streaming'
         ? generateStreamingUID('perplexity', chatId, role, ordinal)
