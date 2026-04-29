@@ -135,15 +135,15 @@ describe('SidebarController', () => {
       expect(pinBtn.getAttribute('aria-label')).toBe('Unpin message');
     });
 
-    it('jump buttons have aria-label "Jump to message"', () => {
+    it('message items are keyboard-focusable for jump navigation', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([makeMessage()]);
 
-      const actionBtns = shadowQueryAll(controller, '.mr-action-btn');
-      // Second action button is the jump button
-      const jumpBtn = actionBtns[1];
-      expect(jumpBtn.getAttribute('aria-label')).toBe('Jump to message');
+      const item = shadowQuery(controller, '.mr-message-item');
+      expect(item).not.toBeNull();
+      expect(item!.getAttribute('role')).toBe('button');
+      expect(item!.getAttribute('tabindex')).toBe('0');
     });
 
     it('search input has an associated label', () => {
@@ -304,7 +304,7 @@ describe('SidebarController', () => {
       expect(ol!.tagName.toLowerCase()).toBe('ol');
     });
 
-    it('each item has ordinal, role label, and preview', () => {
+    it('each item has preview and icon action buttons', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([
@@ -314,17 +314,21 @@ describe('SidebarController', () => {
       const item = shadowQuery(controller, '.mr-message-item');
       expect(item).not.toBeNull();
 
+      // No ordinal or role label rendered
       const ordinal = item!.querySelector('.mr-ordinal');
-      expect(ordinal).not.toBeNull();
-      expect(ordinal!.textContent).toBe('#3');
+      expect(ordinal).toBeNull();
 
       const role = item!.querySelector('.mr-role');
-      expect(role).not.toBeNull();
-      expect(role!.textContent).toBe('User');
+      expect(role).toBeNull();
 
+      // Preview is present
       const preview = item!.querySelector('.mr-preview');
       expect(preview).not.toBeNull();
       expect(preview!.textContent).toBe('Test preview text');
+
+      // Icon buttons are present (pin only, jump is via item click)
+      const iconBtns = item!.querySelectorAll('.mr-icon-btn');
+      expect(iconBtns.length).toBe(1);
     });
 
     it('does not render assistant messages in the list', () => {
@@ -346,15 +350,6 @@ describe('SidebarController', () => {
       expect(previews).toEqual(['User msg', 'Another user msg']);
     });
 
-    it('renders user role label correctly', () => {
-      controller = new SidebarController();
-      controller.mount(document);
-      controller.render([makeMessage({ role: 'user' })]);
-
-      const role = shadowQuery(controller, '.mr-role');
-      expect(role!.textContent).toBe('User');
-    });
-
     it('shows empty state when no messages are provided', () => {
       controller = new SidebarController();
       controller.mount(document);
@@ -368,18 +363,30 @@ describe('SidebarController', () => {
   // ── 8. Callbacks ───────────────────────────────────────────────────
 
   describe('callbacks', () => {
-    it('onJump fires when jump button is clicked', () => {
+    it('onJump fires when message item is clicked', () => {
       const onJump = vi.fn();
       controller = new SidebarController({ onJump });
       controller.mount(document);
       controller.render([makeMessage({ uid: 'jump-uid' })]);
 
-      // Jump button is the second action button in each message item
-      const actionBtns = shadowQueryAll(controller, '.mr-message-list .mr-action-btn');
-      const jumpBtn = actionBtns[1] as HTMLButtonElement;
-      jumpBtn.click();
+      const item = shadowQuery(controller, '.mr-message-list .mr-message-item') as HTMLElement;
+      item.click();
 
       expect(onJump).toHaveBeenCalledWith('jump-uid');
+    });
+
+    it('onJump does NOT fire when pin button is clicked', () => {
+      const onJump = vi.fn();
+      const onTogglePin = vi.fn();
+      controller = new SidebarController({ onJump, onTogglePin });
+      controller.mount(document);
+      controller.render([makeMessage({ uid: 'pin-uid' })]);
+
+      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn') as HTMLButtonElement;
+      pinBtn.click();
+
+      expect(onTogglePin).toHaveBeenCalledWith('pin-uid');
+      expect(onJump).not.toHaveBeenCalled();
     });
 
     it('onTogglePin fires when pin button is clicked', () => {
@@ -388,9 +395,7 @@ describe('SidebarController', () => {
       controller.mount(document);
       controller.render([makeMessage({ uid: 'pin-uid' })]);
 
-      // Pin button is the first action button in each message item
-      const actionBtns = shadowQueryAll(controller, '.mr-message-list .mr-action-btn');
-      const pinBtn = actionBtns[0] as HTMLButtonElement;
+      const pinBtn = shadowQuery(controller, '.mr-message-list .mr-action-btn') as HTMLButtonElement;
       pinBtn.click();
 
       expect(onTogglePin).toHaveBeenCalledWith('pin-uid');

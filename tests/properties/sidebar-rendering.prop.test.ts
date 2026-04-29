@@ -86,7 +86,7 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
         // Build a map of uid -> message for lookup (user messages only)
         const msgMap = new Map(userMessages.map((m) => [m.uid, m]));
 
-        // Verify each rendered list item contains ordinal, role label, and preview
+        // Verify each rendered list item contains preview text
         for (const li of listItems) {
           const uid = (li as HTMLElement).dataset.uid;
           expect(uid).toBeDefined();
@@ -94,21 +94,14 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
           const msg = msgMap.get(uid!);
           expect(msg).toBeDefined();
 
-          // Check ordinal is present (e.g., "#1", "#42")
-          const ordinalEl = li.querySelector('.mr-ordinal');
-          expect(ordinalEl).not.toBeNull();
-          expect(ordinalEl!.textContent).toBe(`#${msg!.ordinal}`);
-
-          // Check role label is present ("User" or "Assistant")
-          const roleEl = li.querySelector('.mr-role');
-          expect(roleEl).not.toBeNull();
-          const expectedRole = msg!.role === 'user' ? 'User' : 'Assistant';
-          expect(roleEl!.textContent).toBe(expectedRole);
-
           // Check text preview is present
           const previewEl = li.querySelector('.mr-preview');
           expect(previewEl).not.toBeNull();
           expect(previewEl!.textContent).toBe(msg!.preview);
+
+          // Check pin icon button is present
+          const iconBtns = li.querySelectorAll('.mr-icon-btn');
+          expect(iconBtns.length).toBe(1);
         }
 
         // Clean up for next iteration

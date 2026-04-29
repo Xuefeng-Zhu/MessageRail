@@ -258,7 +258,14 @@ function handleSearch(query: string): void {
   if (query.trim() === '') {
     sidebar.render(messageIndex.getAll());
   } else {
-    sidebar.render(messageIndex.search(query));
+    // Pass all messages so render can pair user→assistant,
+    // but search results determine which user messages to show
+    const searchResults = messageIndex.search(query);
+    const allMessages = messageIndex.getAll();
+    // Filter: keep user messages that matched, plus all assistant messages for pairing
+    const matchedUserUids = new Set(searchResults.filter(m => m.role === 'user').map(m => m.uid));
+    const filtered = allMessages.filter(m => m.role === 'assistant' || matchedUserUids.has(m.uid));
+    sidebar.render(filtered);
   }
 }
 

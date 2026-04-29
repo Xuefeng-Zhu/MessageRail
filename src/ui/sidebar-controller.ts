@@ -195,6 +195,7 @@ const SIDEBAR_STYLES = `
     padding: 8px 12px;
     border-bottom: 1px solid var(--mr-border);
     gap: 4px;
+    cursor: pointer;
   }
 
   .mr-message-item:hover {
@@ -282,12 +283,31 @@ const SIDEBAR_STYLES = `
     outline-offset: 1px;
   }
 
+  .mr-icon-btn {
+    font-size: 14px;
+    padding: 2px 4px;
+    line-height: 1;
+    border: none;
+  }
+
   .mr-preview {
     font-size: 12px;
     color: var(--mr-text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mr-assistant-preview {
+    font-size: 11px;
+    color: var(--mr-text-secondary);
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-left: 8px;
+    border-left: 2px solid var(--mr-border);
+    margin-top: 2px;
   }
 
   .mr-empty-state {
@@ -422,6 +442,21 @@ export class SidebarController {
 
     const doc = this.shadowRoot.ownerDocument ?? document;
 
+    // Build a map from each user message to the next assistant response
+    const assistantResponseMap = new Map<string, IndexedMessage>();
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === 'user') {
+        // Find the next assistant message after this user message
+        for (let j = i + 1; j < messages.length; j++) {
+          if (messages[j].role === 'assistant') {
+            assistantResponseMap.set(messages[i].uid, messages[j]);
+            break;
+          }
+          if (messages[j].role === 'user') break; // next user message, no assistant in between
+        }
+      }
+    }
+
     // Show only user messages in the sidebar
     const userMessages = messages.filter((m) => m.role === 'user');
 
@@ -443,7 +478,7 @@ export class SidebarController {
       pinnedList.setAttribute('aria-label', 'Pinned messages');
 
       for (const msg of pinnedMessages) {
-        pinnedList.appendChild(this.createMessageItem(doc, msg));
+        pinnedList.appendChild(this.createMessageItem(doc, msg, assistantResponseMap.get(msg.uid)));
       }
 
       pinnedSection.appendChild(pinnedList);
@@ -464,7 +499,7 @@ export class SidebarController {
     messageList.setAttribute('aria-label', 'Message list');
 
     for (const msg of userMessages) {
-      messageList.appendChild(this.createMessageItem(doc, msg));
+      messageList.appendChild(this.createMessageItem(doc, msg, assistantResponseMap.get(msg.uid)));
     }
 
     this.messageListContainer.appendChild(messageList);
@@ -473,26 +508,31 @@ export class SidebarController {
   /**
    * Creates a single message list item element.
    */
-  private createMessageItem(doc: Document, msg: IndexedMessage): HTMLLIElement {
+  private createMessageItem(doc: Document, msg: IndexedMessage, assistantResponse?: IndexedMessage): HTMLLIElement {
     const li = doc.createElement('li');
     li.className = 'mr-message-item';
     li.dataset.uid = msg.uid;
+    li.setAttribute('role', 'button');
+    li.setAttribute('tabindex', '0');
+    li.setAttribute('aria-label', `Jump to message: ${msg.preview}`);
 
-    // Top row: ordinal, role, pin marker, streaming indicator, spacer, actions
+    // Click anywhere on the item to jump
+    li.addEventListener('click', (e) => {
+      // Don't jump if the user clicked the pin button
+      if ((e.target as Element).closest('.mr-action-btn')) return;
+      this.callbacks.onJump?.(msg.uid);
+    });
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if ((e.target as Element).closest('.mr-action-btn')) return;
+        e.preventDefault();
+        this.callbacks.onJump?.(msg.uid);
+      }
+    });
+
+    // Top row: pin marker, streaming indicator, spacer, pin button
     const topRow = doc.createElement('div');
     topRow.className = 'mr-message-top-row';
-
-    // Ordinal
-    const ordinal = doc.createElement('span');
-    ordinal.className = 'mr-ordinal';
-    ordinal.textContent = `#${msg.ordinal}`;
-    topRow.appendChild(ordinal);
-
-    // Role label
-    const role = doc.createElement('span');
-    role.className = 'mr-role';
-    role.textContent = msg.role === 'user' ? 'User' : 'Assistant';
-    topRow.appendChild(role);
 
     // Pin marker (visible only when pinned)
     if (msg.pinned) {
@@ -524,32 +564,22 @@ export class SidebarController {
     spacer.className = 'mr-spacer';
     topRow.appendChild(spacer);
 
-    // Action buttons
+    // Pin toggle button (icon)
     const actions = doc.createElement('span');
     actions.className = 'mr-actions';
 
-    // Pin toggle button
     const pinBtn = doc.createElement('button');
-    pinBtn.className = 'mr-action-btn';
+    pinBtn.className = 'mr-action-btn mr-icon-btn';
     pinBtn.setAttribute(
       'aria-label',
       msg.pinned ? 'Unpin message' : 'Pin message'
     );
-    pinBtn.textContent = msg.pinned ? 'Unpin' : 'Pin';
-    pinBtn.addEventListener('click', () => {
+    pinBtn.textContent = msg.pinned ? '📌' : '📍';
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.callbacks.onTogglePin?.(msg.uid);
     });
     actions.appendChild(pinBtn);
-
-    // Jump button
-    const jumpBtn = doc.createElement('button');
-    jumpBtn.className = 'mr-action-btn';
-    jumpBtn.setAttribute('aria-label', 'Jump to message');
-    jumpBtn.textContent = 'Jump';
-    jumpBtn.addEventListener('click', () => {
-      this.callbacks.onJump?.(msg.uid);
-    });
-    actions.appendChild(jumpBtn);
 
     topRow.appendChild(actions);
     li.appendChild(topRow);
@@ -559,6 +589,14 @@ export class SidebarController {
     preview.className = 'mr-preview';
     preview.textContent = msg.preview;
     li.appendChild(preview);
+
+    // Assistant response preview (one line)
+    if (assistantResponse) {
+      const assistantLine = doc.createElement('div');
+      assistantLine.className = 'mr-assistant-preview';
+      assistantLine.textContent = assistantResponse.preview;
+      li.appendChild(assistantLine);
+    }
 
     return li;
   }
