@@ -101,7 +101,7 @@ MessageRail is a privacy-first Manifest V3 browser extension that adds a univers
 4. THE Sidebar SHALL NOT block or overlap the chat input area of the host page.
 5. THE Sidebar SHALL use an `aside` or `nav` element with `aria-label="MessageRail message index"` as its root landmark.
 6. THE Sidebar SHALL support collapsing and expanding via a toggle button.
-7. WHEN the Sidebar is collapsed, THE Sidebar SHALL minimize to a narrow strip or icon that does not obstruct the chat page.
+7. WHEN the Sidebar is collapsed, THE Sidebar SHALL display a floating circular button positioned at the right edge of the viewport that the user can click to expand the sidebar. The floating button SHALL NOT obstruct the chat input area.
 
 ### Requirement 7: Jump-to-Message Navigation
 

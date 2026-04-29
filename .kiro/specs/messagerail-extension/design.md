@@ -183,7 +183,7 @@ class SidebarController {
   /** Re-renders the message list from the current MessageIndex state. */
   render(messages: IndexedMessage[]): void;
 
-  /** Toggles collapsed/expanded state. */
+  /** Toggles collapsed/expanded state. When collapsed, the sidebar panel is hidden and a floating circular button is shown at the right edge of the viewport. Clicking the floating button expands the sidebar. */
   toggle(): void;
 
   /** Moves keyboard focus to the search input, expanding if collapsed. */

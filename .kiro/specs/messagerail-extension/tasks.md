@@ -177,7 +177,8 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
   - [x] 10.5 Implement sidebar toggle (collapse/expand)
     - `toggle()`: switch between expanded and collapsed states
-    - Collapsed state: minimize to narrow strip or icon, not obstructing chat page
+    - Collapsed state: show a floating circular button at the right edge of the viewport (not a narrow strip); the floating button must not obstruct the chat input area
+    - Clicking the floating button expands the sidebar
     - Persist collapsed state via PreferencesStore
     - `focusSearch()`: expand if collapsed, move focus to search input
     - _Requirements: 6.6, 6.7_
