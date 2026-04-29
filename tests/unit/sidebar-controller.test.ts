@@ -305,7 +305,7 @@ describe('SidebarController', () => {
       expect(ol!.tagName.toLowerCase()).toBe('ol');
     });
 
-    it('each item has an ordinal badge, preview, and no pin action buttons', () => {
+    it('each item has a turn-number badge, preview, and no pin action buttons', () => {
       controller = new SidebarController();
       controller.mount(document);
       controller.render([
@@ -315,10 +315,10 @@ describe('SidebarController', () => {
       const item = shadowQuery(controller, '.mr-message-item');
       expect(item).not.toBeNull();
 
-      // Ordinal badge is present
-      const ordinal = item!.querySelector('.mr-ordinal');
-      expect(ordinal).not.toBeNull();
-      expect(ordinal!.textContent).toBe('#3');
+      // Turn-number badge is present and starts from the visible sidebar rows
+      const turnNumber = item!.querySelector('.mr-turn-number');
+      expect(turnNumber).not.toBeNull();
+      expect(turnNumber!.textContent).toBe('#1');
 
       // No role label rendered
       const role = item!.querySelector('.mr-role');
@@ -351,6 +351,35 @@ describe('SidebarController', () => {
         (li) => li.querySelector('.mr-preview')!.textContent,
       );
       expect(previews).toEqual(['User msg', 'Another user msg']);
+    });
+
+    it('numbers visible user turns sequentially even when assistant messages are indexed', () => {
+      controller = new SidebarController();
+      controller.mount(document);
+      controller.render([
+        makeMessage({ uid: 'user-1', ordinal: 1, role: 'user', preview: 'First user' }),
+        makeMessage({ uid: 'asst-1', ordinal: 2, role: 'assistant', preview: 'Assistant reply' }),
+        makeMessage({ uid: 'user-2', ordinal: 3, role: 'user', preview: 'Second user' }),
+        makeMessage({ uid: 'user-3', ordinal: 7, role: 'user', preview: 'Third user' }),
+      ]);
+
+      const badges = Array.from(shadowQueryAll(controller, '.mr-turn-number')).map(
+        (badge) => badge.textContent,
+      );
+      expect(badges).toEqual(['#1', '#2', '#3']);
+    });
+
+    it('can preserve stable turn numbers supplied by the caller', () => {
+      controller = new SidebarController();
+      controller.mount(document);
+      controller.render(
+        [makeMessage({ uid: 'user-5', ordinal: 9, role: 'user', preview: 'Filtered user' })],
+        { turnNumberByUid: new Map([['user-5', 5]]) },
+      );
+
+      const badge = shadowQuery(controller, '.mr-turn-number');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('#5');
     });
 
     it('shows empty state when no messages are provided', () => {

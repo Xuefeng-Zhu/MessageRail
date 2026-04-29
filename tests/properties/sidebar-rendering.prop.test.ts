@@ -50,9 +50,9 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
    * **Validates: Requirements 6.3**
    *
    * For any IndexedMessage, the rendered sidebar list item SHALL contain
-   * the message's ordinal number and a preview of the message text.
+   * the visible turn number and a preview of the message text.
    */
-  it('every rendered list item contains the ordinal and text preview', () => {
+  it('every rendered list item contains the turn number and text preview', () => {
     fc.assert(
       fc.property(arbUniqueMessages, (messages) => {
         // Create and mount a fresh SidebarController
@@ -82,17 +82,18 @@ describe('Property 8: Sidebar Message Rendering Completeness', () => {
         // Build a map of uid -> message for lookup (user messages only)
         const msgMap = new Map(userMessages.map((m) => [m.uid, m]));
 
-        // Verify each rendered list item contains ordinal and preview text
-        for (const li of listItems) {
+        // Verify each rendered list item contains turn number and preview text
+        for (let i = 0; i < listItems.length; i++) {
+          const li = listItems[i];
           const uid = (li as HTMLElement).dataset.uid;
           expect(uid).toBeDefined();
 
           const msg = msgMap.get(uid!);
           expect(msg).toBeDefined();
 
-          const ordinalEl = li.querySelector('.mr-ordinal');
-          expect(ordinalEl).not.toBeNull();
-          expect(ordinalEl!.textContent).toBe(`#${msg!.ordinal}`);
+          const turnNumberEl = li.querySelector('.mr-turn-number');
+          expect(turnNumberEl).not.toBeNull();
+          expect(turnNumberEl!.textContent).toBe(`#${i + 1}`);
 
           // Check text preview is present
           const previewEl = li.querySelector('.mr-preview');

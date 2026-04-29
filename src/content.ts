@@ -347,9 +347,10 @@ function renderSidebarMessages(emptyState: SidebarEmptyState = 'no-messages'): v
 
   const query = currentSearchQuery.trim();
   const allMessages = messageIndex.getAll();
+  const turnNumberByUid = createTurnNumberMap(allMessages);
 
   if (query === '') {
-    sidebar.render(allMessages, { emptyState });
+    sidebar.render(allMessages, { emptyState, turnNumberByUid });
     return;
   }
 
@@ -358,7 +359,27 @@ function renderSidebarMessages(emptyState: SidebarEmptyState = 'no-messages'): v
   sidebar.render(filtered, {
     emptyState: filtered.length === 0 ? 'no-results' : emptyState,
     searchQuery: currentSearchQuery,
+    turnNumberByUid,
   });
+}
+
+/**
+ * Computes stable sidebar turn numbers from the full conversation.
+ */
+function createTurnNumberMap(messages: IndexedMessage[]): Map<string, number> {
+  const turnNumberByUid = new Map<string, number>();
+  let nextTurnNumber = 1;
+
+  for (const message of messages) {
+    if (message.role !== 'user') {
+      continue;
+    }
+
+    turnNumberByUid.set(message.uid, nextTurnNumber);
+    nextTurnNumber++;
+  }
+
+  return turnNumberByUid;
 }
 
 // ── Chrome Runtime Messages ────────────────────────────────────────

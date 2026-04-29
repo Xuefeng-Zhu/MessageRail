@@ -2,7 +2,7 @@
  * SidebarController — manages the Shadow DOM sidebar UI for MessageRail.
  *
  * Injects a collapsible sidebar into the host page via Shadow DOM,
- * renders the message index with ordinals, role labels, previews,
+ * renders the message index with turn badges, previews,
  * pin markers, streaming indicators, and action buttons.
  *
  * Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 9.1, 9.3, 9.4,
@@ -28,6 +28,7 @@ export type SidebarEmptyState =
 export interface SidebarRenderOptions {
   emptyState?: SidebarEmptyState;
   searchQuery?: string;
+  turnNumberByUid?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -359,7 +360,7 @@ const SIDEBAR_STYLES = `
     min-height: 22px;
   }
 
-  .mr-ordinal {
+  .mr-turn-number {
     flex: 0 0 auto;
     min-width: 26px;
     height: 18px;
@@ -633,7 +634,7 @@ export class SidebarController {
   /**
    * Re-renders the message list from the provided messages.
    *
-   * Displays user messages with ordinal badges and assistant previews.
+   * Displays user messages with turn badges and assistant previews.
    * Empty render states are explicit so search and health failures can
    * explain themselves distinctly.
    *
@@ -681,8 +682,12 @@ export class SidebarController {
     messageList.className = 'mr-message-list';
     messageList.setAttribute('aria-label', 'Message list');
 
-    for (const msg of userMessages) {
-      messageList.appendChild(this.createMessageItem(doc, msg, assistantResponseMap.get(msg.uid)));
+    for (let i = 0; i < userMessages.length; i++) {
+      const msg = userMessages[i];
+      const turnNumber = options.turnNumberByUid?.get(msg.uid) ?? i + 1;
+      messageList.appendChild(
+        this.createMessageItem(doc, msg, turnNumber, assistantResponseMap.get(msg.uid)),
+      );
     }
 
     this.messageListContainer.appendChild(messageList);
@@ -697,13 +702,18 @@ export class SidebarController {
   /**
    * Creates a single message list item element.
    */
-  private createMessageItem(doc: Document, msg: IndexedMessage, assistantResponse?: IndexedMessage): HTMLLIElement {
+  private createMessageItem(
+    doc: Document,
+    msg: IndexedMessage,
+    turnNumber: number,
+    assistantResponse?: IndexedMessage,
+  ): HTMLLIElement {
     const li = doc.createElement('li');
     li.className = 'mr-message-item';
     li.dataset.uid = msg.uid;
     li.setAttribute('role', 'button');
     li.setAttribute('tabindex', '0');
-    li.setAttribute('aria-label', `Jump to message ${msg.ordinal}: ${msg.preview}`);
+    li.setAttribute('aria-label', `Jump to turn ${turnNumber}: ${msg.preview}`);
 
     // Click anywhere on the item to jump
     li.addEventListener('click', (e) => {
@@ -743,11 +753,11 @@ export class SidebarController {
     const previewRow = doc.createElement('div');
     previewRow.className = 'mr-preview-row';
 
-    const ordinal = doc.createElement('span');
-    ordinal.className = 'mr-ordinal';
-    ordinal.textContent = `#${msg.ordinal}`;
-    ordinal.setAttribute('aria-hidden', 'true');
-    previewRow.appendChild(ordinal);
+    const turnBadge = doc.createElement('span');
+    turnBadge.className = 'mr-turn-number';
+    turnBadge.textContent = `#${turnNumber}`;
+    turnBadge.setAttribute('aria-hidden', 'true');
+    previewRow.appendChild(turnBadge);
 
     // Preview text
     const preview = doc.createElement('span');
