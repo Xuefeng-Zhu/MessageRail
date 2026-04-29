@@ -261,11 +261,6 @@ const SIDEBAR_STYLES = `
     min-height: 20px;
   }
 
-  .mr-pin-marker {
-    font-size: 11px;
-    flex-shrink: 0;
-  }
-
   .mr-streaming-indicator {
     flex-shrink: 0;
     display: inline-flex;
@@ -289,11 +284,40 @@ const SIDEBAR_STYLES = `
     50% { opacity: 1; }
   }
 
-  .mr-spacer {
-    flex: 1;
+  /* ── Preview row (message text + pin on same line) ── */
+
+  .mr-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 22px;
   }
 
-  /* ── Pin button (show on hover) ─────────── */
+  .mr-pin-marker {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    color: var(--mr-pin-color);
+  }
+
+  .mr-pin-marker svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+  }
+
+  .mr-preview {
+    flex: 1;
+    font-size: 13px;
+    color: var(--mr-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+    min-width: 0;
+  }
+
+  /* ── Pin button (show on hover, same line as preview) ── */
 
   .mr-actions {
     display: flex;
@@ -317,17 +341,19 @@ const SIDEBAR_STYLES = `
     border: none;
     color: var(--mr-text-tertiary);
     cursor: pointer;
-    padding: 2px;
+    padding: 3px;
     border-radius: var(--mr-radius-sm);
-    font-size: 11px;
     line-height: 1;
     font-family: var(--mr-font-family);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: background 0.12s, color 0.12s;
   }
 
   .mr-action-btn:hover {
     background: var(--mr-bg-active);
-    color: var(--mr-text);
+    color: var(--mr-pin-color);
   }
 
   .mr-action-btn:focus-visible {
@@ -335,20 +361,18 @@ const SIDEBAR_STYLES = `
     outline-offset: 1px;
   }
 
-  .mr-icon-btn {
-    font-size: 13px;
-    padding: 2px 4px;
+  .mr-action-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
   }
 
-  /* ── Preview text ───────────────────────── */
+  .mr-action-btn.mr-pinned-btn {
+    color: var(--mr-pin-color);
+  }
 
-  .mr-preview {
-    font-size: 13px;
-    color: var(--mr-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    line-height: 1.4;
+  .mr-icon-btn {
+    padding: 3px;
   }
 
   .mr-assistant-preview {
@@ -563,6 +587,12 @@ export class SidebarController {
     this.messageListContainer.appendChild(messageList);
   }
 
+  /** SVG path for a filled pin icon (used when pinned). */
+  private static readonly PIN_FILLED_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M10.97 2.29a1 1 0 0 1 1.42 0l1.32 1.32a1 1 0 0 1 0 1.42l-1.8 1.79.5.5a1 1 0 0 1 0 1.42l-1.5 1.5a1 1 0 0 1-1.42 0L8.5 9.25l-3.18 3.18a.5.5 0 0 1-.7-.7L7.78 8.54 6.76 7.52a1 1 0 0 1 0-1.42l1.5-1.5a1 1 0 0 1 1.42 0l.5.5 1.79-1.8z"/></svg>';
+
+  /** SVG path for an outlined pin icon (used when not pinned). */
+  private static readonly PIN_OUTLINE_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M10.97 2.29a1 1 0 0 1 1.42 0l1.32 1.32a1 1 0 0 1 0 1.42l-1.8 1.79.5.5a1 1 0 0 1 0 1.42l-1.5 1.5a1 1 0 0 1-1.42 0L8.5 9.25l-3.18 3.18a.5.5 0 0 1-.7-.7L7.78 8.54 6.76 7.52a1 1 0 0 1 0-1.42l1.5-1.5a1 1 0 0 1 1.42 0l.5.5 1.79-1.8z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+
   /**
    * Creates a single message list item element.
    */
@@ -588,21 +618,11 @@ export class SidebarController {
       }
     });
 
-    // Top row: pin marker, streaming indicator, spacer, pin button
-    const topRow = doc.createElement('div');
-    topRow.className = 'mr-message-top-row';
-
-    // Pin marker (visible only when pinned)
-    if (msg.pinned) {
-      const pinMarker = doc.createElement('span');
-      pinMarker.className = 'mr-pin-marker';
-      pinMarker.textContent = '📌';
-      pinMarker.setAttribute('aria-label', 'Pinned');
-      topRow.appendChild(pinMarker);
-    }
-
-    // Streaming indicator
+    // Streaming indicator row (only shown when streaming)
     if (msg.status === 'streaming') {
+      const topRow = doc.createElement('div');
+      topRow.className = 'mr-message-top-row';
+
       const streamingIndicator = doc.createElement('span');
       streamingIndicator.className = 'mr-streaming-indicator';
 
@@ -615,38 +635,47 @@ export class SidebarController {
       streamingIndicator.appendChild(streamingText);
 
       topRow.appendChild(streamingIndicator);
+      li.appendChild(topRow);
     }
 
-    // Spacer
-    const spacer = doc.createElement('span');
-    spacer.className = 'mr-spacer';
-    topRow.appendChild(spacer);
+    // Preview row: pin marker + message text + pin action button (all on same line)
+    const previewRow = doc.createElement('div');
+    previewRow.className = 'mr-preview-row';
 
-    // Pin toggle button (icon)
+    // Pin marker (visible only when pinned)
+    if (msg.pinned) {
+      const pinMarker = doc.createElement('span');
+      pinMarker.className = 'mr-pin-marker';
+      pinMarker.innerHTML = SidebarController.PIN_FILLED_SVG;
+      pinMarker.setAttribute('aria-label', 'Pinned');
+      previewRow.appendChild(pinMarker);
+    }
+
+    // Preview text
+    const preview = doc.createElement('span');
+    preview.className = 'mr-preview';
+    preview.textContent = msg.preview;
+    previewRow.appendChild(preview);
+
+    // Pin toggle button (SVG icon)
     const actions = doc.createElement('span');
     actions.className = msg.pinned ? 'mr-actions mr-pinned-visible' : 'mr-actions';
 
     const pinBtn = doc.createElement('button');
-    pinBtn.className = 'mr-action-btn mr-icon-btn';
+    pinBtn.className = msg.pinned ? 'mr-action-btn mr-icon-btn mr-pinned-btn' : 'mr-action-btn mr-icon-btn';
     pinBtn.setAttribute(
       'aria-label',
       msg.pinned ? 'Unpin message' : 'Pin message'
     );
-    pinBtn.textContent = msg.pinned ? '📌' : '📍';
+    pinBtn.innerHTML = msg.pinned ? SidebarController.PIN_FILLED_SVG : SidebarController.PIN_OUTLINE_SVG;
     pinBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.callbacks.onTogglePin?.(msg.uid);
     });
     actions.appendChild(pinBtn);
 
-    topRow.appendChild(actions);
-    li.appendChild(topRow);
-
-    // Preview text
-    const preview = doc.createElement('div');
-    preview.className = 'mr-preview';
-    preview.textContent = msg.preview;
-    li.appendChild(preview);
+    previewRow.appendChild(actions);
+    li.appendChild(previewRow);
 
     // Assistant response preview (one line)
     if (assistantResponse) {

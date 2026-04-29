@@ -259,7 +259,7 @@ describe('SidebarController', () => {
       expect(pinnedIndex).toBeLessThan(mainIndex);
     });
 
-    it('pinned messages show a pin marker (📌)', () => {
+    it('pinned messages show a pin marker', () => {
       controller = new SidebarController();
       controller.mount(document);
 
@@ -267,7 +267,7 @@ describe('SidebarController', () => {
 
       const pinMarker = shadowQuery(controller, '.mr-pin-marker');
       expect(pinMarker).not.toBeNull();
-      expect(pinMarker!.textContent).toBe('📌');
+      expect(pinMarker!.querySelector('svg')).not.toBeNull();
     });
 
     it('unpinned messages do NOT show a pin marker', () => {
