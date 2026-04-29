@@ -36,6 +36,85 @@ npm run test:watch  # Run tests in watch mode
 - No network requests of any kind (fetch, XHR, WebSocket)
 - CSS lives inside Shadow DOM — never inject global styles
 
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Browser Extension (MV3)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐         chrome.runtime          ┌──────────┐ │
+│  │   Service    │◄──────── messages ──────────────►│  Popup   │ │
+│  │   Worker     │                                  │  Page    │ │
+│  │ background.ts│                                  │ popup.ts │ │
+│  └──────┬───────┘                                  └──────────┘ │
+│         │                                                       │
+│         │ chrome.runtime messages                                │
+│         ▼                                                       │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Content Script (content.ts)                 │    │
+│  │                                                         │    │
+│  │  ┌─────────────────────────────────────────────────┐    │    │
+│  │  │           Adapter Registry (registry.ts)        │    │    │
+│  │  │                                                 │    │    │
+│  │  │  ┌─────────┐ ┌───────┐ ┌────────┐ ┌────────┐  │    │    │
+│  │  │  │ ChatGPT │ │Claude │ │ Gemini │ │  Grok  │  │    │    │
+│  │  │  │ Adapter │ │ Stub  │ │  Stub  │ │  Stub  │  │    │    │
+│  │  │  └────┬────┘ └───────┘ └────────┘ └────────┘  │    │    │
+│  │  └───────┼────────────────────────────────────────┘    │    │
+│  │          │                                              │    │
+│  │          │ ObservedMessage[]                            │    │
+│  │          ▼                                              │    │
+│  │  ┌──────────────────┐        ┌─────────────────────┐   │    │
+│  │  │  Message Index   │───────►│  Sidebar Controller │   │    │
+│  │  │  (core)          │        │  (Shadow DOM)       │   │    │
+│  │  │                  │        │                     │   │    │
+│  │  │  • ordinals      │        │  • message list     │   │    │
+│  │  │  • deduplication │        │  • search input     │   │    │
+│  │  │  • search        │        │  • pin buttons      │   │    │
+│  │  │  • pin state     │        │  • toggle collapse  │   │    │
+│  │  └────────┬─────────┘        └──────────┬──────────┘   │    │
+│  │           │                              │              │    │
+│  │           ▼                              ▼              │    │
+│  │  ┌────────────────┐          ┌────────────────────┐    │    │
+│  │  │ IndexedDB Store│          │    LiveAnchor      │    │    │
+│  │  │ (messages/pins)│          │ (scrollIntoView)   │    │    │
+│  │  └────────────────┘          └─────────┬──────────┘    │    │
+│  │                                        │               │    │
+│  │  ┌────────────────┐                    │               │    │
+│  │  │Preferences Store│                   │               │    │
+│  │  │(chrome.storage) │                   │               │    │
+│  │  └────────────────┘                    │               │    │
+│  └────────────────────────────────────────┼───────────────┘    │
+│                                           │                     │
+└───────────────────────────────────────────┼─────────────────────┘
+                                            │
+                                            ▼
+                                   ┌────────────────┐
+                                   │  Host Page DOM │
+                                   │  (ChatGPT etc) │
+                                   └────────────────┘
+```
+
+### Data Flow
+
+```
+Host Page DOM
+    │
+    │ MutationObserver
+    ▼
+Provider Adapter ──► ObservedMessage[] ──► Message Index ──► Sidebar Controller
+    │                                          │                     │
+    │                                          │ persist             │ user click
+    │                                          ▼                     ▼
+    │                                    IndexedDB Store       LiveAnchor
+    │                                                              │
+    │◄─────────────────────────────────────────────────────────────┘
+    │                                                    scrollIntoView
+    ▼
+Host Page DOM (scroll to message)
+```
+
 ## Architecture Rules
 
 - **Adapters** (`src/adapters/`): Each provider gets its own file implementing `SiteAdapter`. Register new adapters in `registry.ts`.
