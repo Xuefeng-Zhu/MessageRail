@@ -30,17 +30,20 @@ const SIDEBAR_STYLES = `
   :host {
     --mr-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --mr-bg: #ffffff;
-    --mr-bg-secondary: #f5f5f5;
+    --mr-bg-secondary: #f7f7f8;
+    --mr-bg-hover: #eff1f5;
+    --mr-bg-active: #e8eaef;
     --mr-text: #1a1a1a;
-    --mr-text-secondary: #666666;
-    --mr-border: #e0e0e0;
-    --mr-accent: #4a90d9;
-    --mr-accent-hover: #357abd;
-    --mr-pin-color: #d4a017;
-    --mr-streaming-color: #22c55e;
-    --mr-btn-bg: transparent;
-    --mr-btn-hover-bg: #e8e8e8;
-    --mr-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
+    --mr-text-secondary: #6b7280;
+    --mr-text-tertiary: #9ca3af;
+    --mr-border: #e5e7eb;
+    --mr-accent: #3b82f6;
+    --mr-accent-hover: #2563eb;
+    --mr-pin-color: #f59e0b;
+    --mr-streaming-color: #10b981;
+    --mr-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+    --mr-radius: 8px;
+    --mr-radius-sm: 6px;
 
     all: initial;
     display: block;
@@ -54,25 +57,26 @@ const SIDEBAR_STYLES = `
 
   @media (prefers-color-scheme: dark) {
     :host {
-      --mr-bg: #1e1e1e;
-      --mr-bg-secondary: #2a2a2a;
-      --mr-text: #e0e0e0;
-      --mr-text-secondary: #999999;
-      --mr-border: #3a3a3a;
-      --mr-accent: #6ab0f3;
-      --mr-accent-hover: #5a9de0;
-      --mr-pin-color: #f0c040;
-      --mr-streaming-color: #4ade80;
-      --mr-btn-bg: transparent;
-      --mr-btn-hover-bg: #3a3a3a;
-      --mr-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+      --mr-bg: #1a1b1e;
+      --mr-bg-secondary: #25262b;
+      --mr-bg-hover: #2c2d33;
+      --mr-bg-active: #35363d;
+      --mr-text: #e4e5e7;
+      --mr-text-secondary: #9ca3af;
+      --mr-text-tertiary: #6b7280;
+      --mr-border: #2e3035;
+      --mr-accent: #60a5fa;
+      --mr-accent-hover: #3b82f6;
+      --mr-pin-color: #fbbf24;
+      --mr-streaming-color: #34d399;
+      --mr-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
     }
   }
 
   .mr-sidebar {
     display: flex;
     flex-direction: column;
-    width: 320px;
+    width: 300px;
     height: 100%;
     background: var(--mr-bg);
     color: var(--mr-text);
@@ -80,28 +84,33 @@ const SIDEBAR_STYLES = `
     box-shadow: var(--mr-shadow);
     font-family: var(--mr-font-family);
     font-size: 13px;
-    line-height: 1.4;
+    line-height: 1.5;
     box-sizing: border-box;
-    transition: width 0.2s ease, opacity 0.2s ease;
+    transition: width 0.2s ease;
     overflow: hidden;
   }
 
   .mr-sidebar.mr-collapsed {
-    width: 40px;
+    width: 36px;
   }
+
+  /* ── Header ─────────────────────────────── */
 
   .mr-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
+    padding: 8px 10px;
     border-bottom: 1px solid var(--mr-border);
     flex-shrink: 0;
+    background: var(--mr-bg);
   }
 
   .mr-header-title {
-    font-weight: 600;
-    font-size: 14px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+    color: var(--mr-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -114,19 +123,21 @@ const SIDEBAR_STYLES = `
   }
 
   .mr-toggle-btn {
-    background: var(--mr-btn-bg);
+    background: none;
     border: none;
-    color: var(--mr-text);
+    color: var(--mr-text-secondary);
     cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 4px;
-    font-size: 16px;
+    padding: 4px;
+    border-radius: var(--mr-radius-sm);
+    font-size: 14px;
     line-height: 1;
     flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
   }
 
   .mr-toggle-btn:hover {
-    background: var(--mr-btn-hover-bg);
+    background: var(--mr-bg-hover);
+    color: var(--mr-text);
   }
 
   .mr-toggle-btn:focus-visible {
@@ -134,53 +145,80 @@ const SIDEBAR_STYLES = `
     outline-offset: 1px;
   }
 
+  /* ── Search ─────────────────────────────── */
+
   .mr-search-container {
-    padding: 8px 12px;
+    padding: 6px 10px;
     border-bottom: 1px solid var(--mr-border);
     flex-shrink: 0;
+    position: relative;
+  }
+
+  .mr-search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--mr-text-tertiary);
+    font-size: 13px;
+    pointer-events: none;
   }
 
   .mr-search-input {
     width: 100%;
-    padding: 6px 8px;
+    padding: 6px 8px 6px 28px;
     border: 1px solid var(--mr-border);
-    border-radius: 4px;
+    border-radius: var(--mr-radius);
     background: var(--mr-bg-secondary);
     color: var(--mr-text);
     font-family: var(--mr-font-family);
     font-size: 12px;
     box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
 
   .mr-search-input::placeholder {
-    color: var(--mr-text-secondary);
+    color: var(--mr-text-tertiary);
   }
 
   .mr-search-input:focus {
-    outline: 2px solid var(--mr-accent);
-    outline-offset: -1px;
+    outline: none;
     border-color: var(--mr-accent);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
   }
+
+  /* ── Message list ───────────────────────── */
 
   .mr-message-list-container {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 0;
+    overflow-x: hidden;
+  }
+
+  .mr-message-list-container::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .mr-message-list-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .mr-message-list-container::-webkit-scrollbar-thumb {
+    background: var(--mr-border);
+    border-radius: 2px;
   }
 
   .mr-pinned-section {
     border-bottom: 1px solid var(--mr-border);
-    padding-bottom: 4px;
-    margin-bottom: 4px;
   }
 
   .mr-pinned-header {
-    padding: 4px 12px;
-    font-size: 11px;
+    padding: 6px 10px 2px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--mr-pin-color);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.05em;
   }
 
   .mr-message-list {
@@ -189,61 +227,61 @@ const SIDEBAR_STYLES = `
     padding: 0;
   }
 
+  /* ── Message item ───────────────────────── */
+
   .mr-message-item {
     display: flex;
     flex-direction: column;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--mr-border);
-    gap: 4px;
+    padding: 8px 10px;
+    gap: 2px;
     cursor: pointer;
+    border-bottom: 1px solid var(--mr-border);
+    transition: background 0.12s;
+    position: relative;
   }
 
   .mr-message-item:hover {
-    background: var(--mr-bg-secondary);
+    background: var(--mr-bg-hover);
+  }
+
+  .mr-message-item:active {
+    background: var(--mr-bg-active);
+  }
+
+  .mr-message-item:focus-visible {
+    outline: 2px solid var(--mr-accent);
+    outline-offset: -2px;
+    border-radius: 2px;
   }
 
   .mr-message-top-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-  }
-
-  .mr-ordinal {
-    font-weight: 600;
-    color: var(--mr-accent);
-    font-size: 12px;
-    flex-shrink: 0;
-  }
-
-  .mr-role {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--mr-text-secondary);
-    text-transform: capitalize;
-    flex-shrink: 0;
+    gap: 4px;
+    min-height: 20px;
   }
 
   .mr-pin-marker {
+    font-size: 11px;
     flex-shrink: 0;
-    font-size: 12px;
-    color: var(--mr-pin-color);
   }
 
   .mr-streaming-indicator {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    font-size: 11px;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 500;
     color: var(--mr-streaming-color);
   }
 
   .mr-streaming-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: var(--mr-streaming-color);
-    animation: mr-pulse 1.2s ease-in-out infinite;
+    animation: mr-pulse 1.4s ease-in-out infinite;
   }
 
   @keyframes mr-pulse {
@@ -255,26 +293,40 @@ const SIDEBAR_STYLES = `
     flex: 1;
   }
 
+  /* ── Pin button (show on hover) ─────────── */
+
   .mr-actions {
     display: flex;
-    gap: 4px;
+    gap: 2px;
     flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .mr-message-item:hover .mr-actions,
+  .mr-message-item:focus-within .mr-actions {
+    opacity: 1;
+  }
+
+  .mr-actions.mr-pinned-visible {
+    opacity: 1;
   }
 
   .mr-action-btn {
-    background: var(--mr-btn-bg);
-    border: 1px solid var(--mr-border);
-    color: var(--mr-text-secondary);
+    background: none;
+    border: none;
+    color: var(--mr-text-tertiary);
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 3px;
+    padding: 2px;
+    border-radius: var(--mr-radius-sm);
     font-size: 11px;
-    line-height: 1.2;
+    line-height: 1;
     font-family: var(--mr-font-family);
+    transition: background 0.12s, color 0.12s;
   }
 
   .mr-action-btn:hover {
-    background: var(--mr-btn-hover-bg);
+    background: var(--mr-bg-active);
     color: var(--mr-text);
   }
 
@@ -284,36 +336,37 @@ const SIDEBAR_STYLES = `
   }
 
   .mr-icon-btn {
-    font-size: 14px;
+    font-size: 13px;
     padding: 2px 4px;
-    line-height: 1;
-    border: none;
   }
 
+  /* ── Preview text ───────────────────────── */
+
   .mr-preview {
-    font-size: 12px;
-    color: var(--mr-text-secondary);
+    font-size: 13px;
+    color: var(--mr-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.4;
   }
 
   .mr-assistant-preview {
     font-size: 11px;
-    color: var(--mr-text-secondary);
-    opacity: 0.7;
+    color: var(--mr-text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     padding-left: 8px;
     border-left: 2px solid var(--mr-border);
-    margin-top: 2px;
+    line-height: 1.4;
+    margin-top: 1px;
   }
 
   .mr-empty-state {
-    padding: 24px 12px;
+    padding: 32px 16px;
     text-align: center;
-    color: var(--mr-text-secondary);
+    color: var(--mr-text-tertiary);
     font-size: 12px;
   }
 `;
@@ -381,7 +434,7 @@ export class SidebarController {
     const toggleBtn = doc.createElement('button');
     toggleBtn.className = 'mr-toggle-btn';
     toggleBtn.setAttribute('aria-label', 'Toggle sidebar');
-    toggleBtn.textContent = '◀';
+    toggleBtn.textContent = '⏵';
     toggleBtn.addEventListener('click', () => {
       this.toggle();
       this.callbacks.onToggle?.();
@@ -393,6 +446,10 @@ export class SidebarController {
     // Search container
     const searchContainer = doc.createElement('div');
     searchContainer.className = 'mr-search-container';
+
+    const searchIcon = doc.createElement('span');
+    searchIcon.className = 'mr-search-icon';
+    searchIcon.textContent = '🔍';
 
     const searchLabel = doc.createElement('label');
     searchLabel.className = 'mr-search-label';
@@ -413,6 +470,7 @@ export class SidebarController {
       this.callbacks.onSearch?.(this.searchInput!.value);
     });
 
+    searchContainer.appendChild(searchIcon);
     searchContainer.appendChild(searchLabel);
     searchContainer.appendChild(this.searchInput);
     this.sidebarEl.appendChild(searchContainer);
@@ -566,7 +624,7 @@ export class SidebarController {
 
     // Pin toggle button (icon)
     const actions = doc.createElement('span');
-    actions.className = 'mr-actions';
+    actions.className = msg.pinned ? 'mr-actions mr-pinned-visible' : 'mr-actions';
 
     const pinBtn = doc.createElement('button');
     pinBtn.className = 'mr-action-btn mr-icon-btn';
