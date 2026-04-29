@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ChatGPT Conversation Fixture</title>
+</head>
+<body>
+  <!--
+    Minimal ChatGPT DOM fixture for adapter tests.
+    Mirrors the structural selectors used by the ChatGPT adapter:
+      - [role="presentation"]        → chat container
+      - [data-message-author-role]   → message element (user | assistant)
+      - [data-message-id]            → native message ID
+      - [data-is-streaming]          → streaming indicator
+      - .markdown / .whitespace-pre-wrap → text content container
+  -->
+  <div role="presentation">
+
+    <!-- User message -->
+    <div data-message-author-role="user" data-message-id="msg-user-001">
+      <div class="whitespace-pre-wrap">What is the capital of France?</div>
+    </div>
+
+    <!-- Complete assistant message -->
+    <div data-message-author-role="assistant" data-message-id="msg-asst-001">
+      <div class="markdown">The capital of France is Paris. It is the largest city in France and serves as the country's political, economic, and cultural center.</div>
+    </div>
+
+    <!-- Streaming assistant message -->
+    <div data-message-author-role="assistant" data-message-id="msg-asst-002" data-is-streaming="true">
+      <div class="markdown">Paris has a population of approximately</div>
+    </div>
+
+  </div>
+</body>
+</html>

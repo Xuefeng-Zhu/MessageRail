@@ -1,0 +1,253 @@
+# Implementation Plan: MessageRail Extension
+
+## Overview
+
+This plan implements the MessageRail browser extension incrementally, starting with the project scaffold and core utilities, then building up through the adapter architecture, message indexing, sidebar UI, storage, and finally integration wiring. Each task builds on previous tasks so there is no orphaned code. All code is TypeScript, built with esbuild, and tested with Vitest + fast-check.
+
+## Tasks
+
+- [x] 1. Project scaffold and build pipeline
+  - [x] 1.1 Initialize the project with `package.json`, install TypeScript, esbuild, Vitest, fast-check, and jsdom as dev dependencies
+    - Create `tsconfig.json` with strict mode targeting ES2020+ and DOM lib
+    - Create `esbuild.config.ts` (or build script) that bundles `src/background.ts`, `src/content.ts`, and `src/popup.ts` into `dist/`
+    - Create `vitest.config.ts` with jsdom environment
+    - _Requirements: 1.2, 16.1_
+  - [x] 1.2 Create the Manifest V3 `manifest.json`
+    - Include `content_scripts`, `background.service_worker`, `commands` for toggle-sidebar (`Alt+M`) and focus-search (`Alt+Shift+M`)
+    - Declare host permissions for `chatgpt.com`, `claude.ai`, `gemini.google.com`, `grok.com`, `www.perplexity.com`
+    - Include Content Security Policy disallowing `unsafe-eval` and remote scripts
+    - Do NOT declare `<all_urls>`
+    - _Requirements: 1.1, 1.4, 1.5, 11.2, 11.5, 13.1, 13.2, 13.3_
+  - [x] 1.3 Create minimal entry points: `src/background.ts`, `src/content.ts`, `src/popup.ts` (empty stubs that compile)
+    - Verify the project builds without errors via `npm run build`
+    - _Requirements: 1.1, 1.3_
+
+- [x] 2. Core data models and utility functions
+  - [x] 2.1 Define all TypeScript interfaces and types in `src/types.ts`
+    - `ObservedMessage`, `IndexedMessage`, `ChatContext`, `PinRecord`, `StoredMessage`, `LiveAnchor`, `SiteAdapter`
+    - _Requirements: 2.4, 3.3, 3.4, 3.5, 3.6_
+  - [x] 2.2 Implement `normalizeText` in `src/utils/normalize.ts`
+    - Trim leading/trailing whitespace, collapse consecutive whitespace (spaces, tabs, newlines) into a single space
+    - _Requirements: 5.3, 14.1, 14.2_
+  - [x] 2.3 Write property test for text normalization correctness
+    - **Property 4: Text Normalization Correctness**
+    - Verify output has no leading/trailing whitespace and no consecutive whitespace for any input string
+    - **Validates: Requirements 5.3, 14.1, 14.2**
+  - [x] 2.4 Write property test for text normalization idempotence
+    - **Property 5: Text Normalization Idempotence**
+    - Verify `normalizeText(normalizeText(x)) === normalizeText(x)` for any input string
+    - **Validates: Requirements 14.5, 16.6**
+  - [x] 2.5 Implement `textChecksum` and `generateUID` in `src/utils/uid.ts`
+    - `generateUID(provider, chatId, role, ordinal, text)` produces a deterministic string key
+    - Use a simple hash (e.g., CRC32 or FNV-1a) for the text checksum component
+    - For streaming messages (status not complete), derive UID from ordinal and role only (no text checksum)
+    - _Requirements: 3.5, 14.3, 14.4, 15.4_
+  - [x] 2.6 Write property test for UID determinism
+    - **Property 2: UID Determinism**
+    - Verify identical input tuples always produce the same UID
+    - **Validates: Requirements 3.5, 14.3**
+  - [x] 2.7 Write property test for UID collision resistance
+    - **Property 3: UID Collision Resistance**
+    - Verify tuples differing in at least one field produce different UIDs
+    - **Validates: Requirements 14.4**
+  - [x] 2.8 Write property test for streaming UID stability
+    - **Property 11: Streaming UID Stability**
+    - Verify that as streaming message text grows, the UID remains constant until status becomes `complete`
+    - **Validates: Requirements 15.4**
+
+- [x] 3. Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Adapter Registry and ChatGPT Adapter
+  - [x] 4.1 Implement `AdapterRegistry` in `src/adapters/registry.ts`
+    - `register(adapter)` adds to internal list; `getAdapter(url, doc)` returns first matching adapter or null
+    - _Requirements: 2.1, 2.2, 2.3_
+  - [x] 4.2 Write property test for adapter registry selection
+    - **Property 1: Adapter Registry Selection**
+    - Verify the registry returns the first adapter whose `canHandle` returns true, or null if none match
+    - **Validates: Requirements 2.1, 2.2, 2.3**
+  - [x] 4.3 Implement the ChatGPT adapter in `src/adapters/chatgpt.ts`
+    - `canHandle`: match `chatgpt.com` URLs
+    - `getChatContext`: extract chat ID from URL path, provider = `'chatgpt'`
+    - `scanVisible`: use structural CSS selectors (data attributes, tag hierarchy — not English text) to find message elements, extract role, text, and status
+    - `observe`: attach MutationObserver to chat container, debounce/deduplicate mutations, call `onUpdate` with new/changed messages; return cleanup function that disconnects observer
+    - `materializeMessage`: return a `LiveAnchor` bound to the message's DOM element, or null if element is gone
+    - `healthcheck`: verify expected DOM structure is present
+    - Handle streaming detection: set `status: 'streaming'` while response is generating, `status: 'complete'` when done
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5_
+  - [x] 4.4 Create ChatGPT DOM fixture at `tests/fixtures/chatgpt-basic.html`
+    - Include representative user and assistant message elements with structural selectors
+    - Include a streaming assistant message element
+    - _Requirements: 16.5_
+  - [x] 4.5 Write fixture-based tests for the ChatGPT adapter
+    - Test message extraction (correct roles, text content)
+    - Test structural selectors (no reliance on English text)
+    - Test streaming detection
+    - Test MutationObserver fires callback on DOM changes and cleanup disconnects observer
+    - Test deduplication across multiple observer fires for the same mutation
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 16.5_
+  - [x] 4.6 Implement stub adapters for Claude, Gemini, Grok, and Perplexity in `src/adapters/`
+    - Each stub implements `SiteAdapter`, `canHandle` matches the respective domain, all other methods return empty/placeholder results
+    - _Requirements: 2.6_
+  - [x] 4.7 Write unit tests for stub adapters
+    - Verify each stub implements the SiteAdapter interface and returns expected placeholder results
+    - _Requirements: 2.6_
+
+- [x] 5. Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. MessageIndex core logic
+  - [x] 6.1 Implement `MessageIndex` in `src/core/message-index.ts`
+    - `update(incoming)`: normalize text, generate UIDs, assign sequential ordinals starting from 1, deduplicate by UID, update existing streaming messages in-place
+    - `getAll()`: return all messages sorted by ordinal
+    - `search(query)`: case-insensitive substring match on normalized text
+    - `togglePin(uid)`: toggle pin state, persist to IndexedDB (storage wired in later task)
+    - `getPinned()`: return pinned messages
+    - `loadPins(chatId)`: load persisted pins from storage
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 8.3, 8.5, 9.1, 9.5, 15.3_
+  - [x] 6.2 Write property test for ordinal assignment stability
+    - **Property 6: Ordinal Assignment Stability**
+    - Verify ordinals are sequential from 1 and existing ordinals never change when new messages are added
+    - **Validates: Requirements 5.1, 5.2**
+  - [x] 6.3 Write property test for message deduplication
+    - **Property 7: Message Deduplication**
+    - Verify that after ingesting messages with duplicate UIDs, each UID appears exactly once
+    - **Validates: Requirements 5.4**
+  - [x] 6.4 Write property test for search filter correctness
+    - **Property 9: Search Filter Correctness**
+    - Verify search returns exactly those messages whose normalized text contains the query as a case-insensitive substring — no false positives, no false negatives
+    - **Validates: Requirements 8.3**
+
+- [x] 7. Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 8. IndexedDB and Preferences storage
+  - [x] 8.1 Implement `IndexedDBStore` in `src/storage/indexeddb-store.ts`
+    - `open()`: open database `messagerail` v1, create `messages` and `pins` object stores with `uid` keyPath and `chatId` index
+    - `putPin`, `deletePin`, `getPinsByChatId`: CRUD for pin records
+    - `putMessages`, `getMessagesByChatId`: batch message persistence and retrieval
+    - Handle errors: retry once on write failure, fall back to in-memory on open failure
+    - _Requirements: 10.1, 10.3, 10.4, 10.5_
+  - [x] 8.2 Write integration tests for IndexedDBStore
+    - Test open, putPin, deletePin, getPinsByChatId round-trips
+    - Test putMessages and getMessagesByChatId
+    - Test error handling (open failure degrades gracefully)
+    - _Requirements: 10.1_
+  - [x] 8.3 Implement `PreferencesStore` in `src/storage/preferences-store.ts`
+    - Wrap `chrome.storage.local` with `get<T>(key)` and `set<T>(key, value)`
+    - Fall back to hardcoded defaults if `chrome.storage.local` is unavailable
+    - _Requirements: 10.2_
+  - [x] 8.4 Write unit tests for PreferencesStore
+    - Test get/set with mocked `chrome.storage.local`
+    - Test fallback to defaults when storage is unavailable
+    - _Requirements: 10.2_
+  - [x] 8.5 Write property test for pin toggle round-trip
+    - **Property 10: Pin Toggle Round-Trip**
+    - Verify that pinning then unpinning a message results in the message being unpinned and the pin record absent from storage
+    - **Validates: Requirements 9.5**
+
+- [x] 9. Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 10. Sidebar injection, rendering, and UI
+  - [x] 10.1 Implement `SidebarController` in `src/ui/sidebar-controller.ts`
+    - `mount(doc)`: create a Shadow DOM host element, attach shadow root, inject sidebar HTML and CSS
+    - Use `aside` element with `aria-label="MessageRail message index"` as root landmark
+    - Render all styles within the Shadow DOM — no external stylesheets or remote assets
+    - Support light/dark mode via CSS custom properties or host-page color scheme detection
+    - Use system font stack or locally bundled fonts only
+    - _Requirements: 6.1, 6.2, 6.5, 12.1, 12.2, 12.5_
+  - [x] 10.2 Implement message list rendering in `SidebarController`
+    - `render(messages)`: display each `IndexedMessage` as a list item with ordinal, role label, and text preview (~80 chars)
+    - Use semantic list markup (`ol` or `ul` with `li`)
+    - Show streaming indicator for messages with `status: 'streaming'`; remove on `status: 'complete'`
+    - Show visual pin marker on pinned messages; render pinned section at top
+    - Include a pin toggle button on each message item (keyboard-focusable, accessible label)
+    - Include a jump button on each message item (keyboard-focusable, accessible label)
+    - _Requirements: 6.3, 6.4, 6.6, 6.7, 9.1, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2_
+  - [x] 10.3 Write property test for sidebar rendering completeness
+    - **Property 8: Sidebar Message Rendering Completeness**
+    - Verify that for any IndexedMessage, the rendered list item contains the ordinal, role label, and text preview
+    - **Validates: Requirements 6.3**
+  - [x] 10.4 Implement search UI in `SidebarController`
+    - Render a search input field above the message list with an accessible label
+    - On input, call `MessageIndex.search(query)` and re-render filtered results
+    - On clear, restore full message list
+    - Search input must be keyboard-focusable
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
+  - [x] 10.5 Implement sidebar toggle (collapse/expand)
+    - `toggle()`: switch between expanded and collapsed states
+    - Collapsed state: minimize to narrow strip or icon, not obstructing chat page
+    - Persist collapsed state via PreferencesStore
+    - `focusSearch()`: expand if collapsed, move focus to search input
+    - _Requirements: 6.6, 6.7_
+  - [x] 10.6 Write unit tests for SidebarController
+    - Test toggle collapse/expand state changes
+    - Test accessibility: root element is `aside` with correct `aria-label`, buttons are keyboard-focusable
+    - Test streaming indicator display and removal
+    - Test search input has accessible label, clearing restores full list
+    - Test pinned messages section renders at top with visual marker
+    - _Requirements: 6.3, 6.5, 6.6, 6.7, 8.1, 8.2, 8.4, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2_
+
+- [x] 11. LiveAnchor and jump-to-message navigation
+  - [x] 11.1 Implement `LiveAnchor` in `src/ui/live-anchor.ts`
+    - `scrollIntoView()`: smooth-scroll the bound element into view using `{ behavior: 'smooth' }`
+    - `focusForA11y()`: move keyboard focus to the element or a focusable child
+    - Apply a temporary visual highlight or focus ring for at least 1 second after scrolling
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - [x] 11.2 Write unit tests for LiveAnchor
+    - Test `scrollIntoView` uses `{ behavior: 'smooth' }`
+    - Test `focusForA11y` moves `document.activeElement`
+    - Test temporary highlight is applied and removed
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+- [x] 12. Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 13. Service worker, keyboard shortcuts, and content script wiring
+  - [x] 13.1 Implement the service worker in `src/background.ts`
+    - Listen for `chrome.commands.onCommand` for `toggle-sidebar` and `focus-search`
+    - Send `chrome.runtime.sendMessage` or `chrome.tabs.sendMessage` to the active tab's content script
+    - Handle errors gracefully (content script not ready, unknown action types)
+    - _Requirements: 13.1, 13.2, 13.4, 13.5_
+  - [x] 13.2 Implement the content script orchestrator in `src/content.ts`
+    - On page load: poll for chat container (max 10 attempts, 500ms interval), then initialize
+    - Use `AdapterRegistry.getAdapter(url, doc)` to select the adapter
+    - If no adapter matches, exit gracefully (no sidebar injected)
+    - Call `getChatContext`, `scanVisible`, pass messages to `MessageIndex.update`, render via `SidebarController`
+    - Call `observe` to attach MutationObserver; pipe updates through `MessageIndex.update` → `SidebarController.render`
+    - Wire jump-to-message: on sidebar item click, call `adapter.materializeMessage` → `LiveAnchor.scrollIntoView`
+    - Wire pin toggle: on pin button click, call `MessageIndex.togglePin`
+    - Wire search: sidebar search input → `MessageIndex.search` → `SidebarController.render`
+    - Listen for `chrome.runtime.onMessage` for toggle-sidebar and focus-search commands
+    - Handle SPA navigation: detect URL changes via `popstate`/`hashchange`, tear down observer, reinitialize
+    - Handle `healthcheck` failure: disable observer, show banner in sidebar
+    - Handle extension update disconnection gracefully
+    - _Requirements: 4.1, 6.1, 7.1, 8.3, 9.2, 9.6, 13.4, 13.5_
+  - [x] 13.3 Write unit tests for keyboard shortcut manifest commands
+    - Verify manifest commands don't conflict with reserved browser shortcuts (Ctrl+F, Cmd+F, Ctrl+T, Cmd+T, Ctrl+W, Cmd+W)
+    - _Requirements: 13.3_
+
+- [x] 14. Smoke tests and security checks
+  - [x] 14.1 Write smoke tests for manifest structure
+    - Verify manifest.json has required MV3 fields, correct host_permissions, no `<all_urls>`
+    - _Requirements: 1.1, 1.4, 1.5_
+  - [x] 14.2 Write smoke tests for security constraints
+    - Verify CSP disallows `unsafe-eval` and remote scripts
+    - Verify source code contains no `eval()` or `new Function()`
+    - Verify no external stylesheet, font, or script URLs in source
+    - Verify no `fetch`, `XMLHttpRequest`, or `WebSocket` usage in extension code
+    - _Requirements: 1.6, 11.1, 11.3, 11.4, 11.5_
+
+- [x] 15. Final checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation after each major component
+- Property tests validate the 11 universal correctness properties from the design document
+- Unit and fixture tests cover edge cases, accessibility, and integration points
+- The ChatGPT adapter is fully implemented; Claude, Gemini, Grok, and Perplexity are stubs
+- All storage is local (IndexedDB + chrome.storage.local) — no network requests

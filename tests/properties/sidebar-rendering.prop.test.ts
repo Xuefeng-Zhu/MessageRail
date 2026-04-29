@@ -1,0 +1,121 @@
+// Feature: messagerail-extension, Property 8: Sidebar Message Rendering Completeness
+
+import { describe, it, expect, afterEach } from 'vitest';
+import fc from 'fast-check';
+import { SidebarController } from '../../src/ui/sidebar-controller';
+import type { IndexedMessage } from '../../src/types';
+
+/**
+ * Arbitrary for a single IndexedMessage with random fields.
+ */
+const arbIndexedMessage = fc.record({
+  uid: fc.string({ minLength: 1, maxLength: 20 }),
+  nativeId: fc.constant(null),
+  role: fc.constantFrom('user', 'assistant') as fc.Arbitrary<'user' | 'assistant'>,
+  text: fc.string({ minLength: 1, maxLength: 200 }),
+  preview: fc.string({ minLength: 1, maxLength: 80 }),
+  ordinal: fc.integer({ min: 1, max: 1000 }),
+  status: fc.constantFrom('streaming', 'complete') as fc.Arbitrary<'streaming' | 'complete'>,
+  pinned: fc.boolean(),
+});
+
+/**
+ * Arbitrary for an array of IndexedMessages with unique UIDs.
+ * Ensures at least one user message is present for meaningful rendering tests.
+ */
+const arbUniqueMessages = fc
+  .array(arbIndexedMessage, { minLength: 1, maxLength: 20 })
+  .map((msgs) => {
+    const seen = new Set<string>();
+    return msgs.filter((m) => {
+      if (seen.has(m.uid)) return false;
+      seen.add(m.uid);
+      return true;
+    });
+  })
+  .filter((msgs) => msgs.length > 0 && msgs.some((m) => m.role === 'user'));
+
+// Feature: messagerail-extension, Property 8: Sidebar Message Rendering Completeness
+describe('Property 8: Sidebar Message Rendering Completeness', () => {
+  let controller: SidebarController | null = null;
+
+  afterEach(() => {
+    if (controller) {
+      controller.unmount();
+      controller = null;
+    }
+  });
+
+  /**
+   * **Validates: Requirements 6.3**
+   *
+   * For any IndexedMessage, the rendered sidebar list item SHALL contain
+   * the message's ordinal number, role label, and a preview of the message text.
+   */
+  it('every rendered list item contains the ordinal, role label, and text preview', () => {
+    fc.assert(
+      fc.property(arbUniqueMessages, (messages) => {
+        // Create and mount a fresh SidebarController
+        controller = new SidebarController();
+        controller.mount(document);
+
+        // Render the messages
+        controller.render(messages);
+
+        // Access the shadow root to inspect rendered elements
+        const host = document.getElementById('messagerail-host');
+        expect(host).not.toBeNull();
+
+        const shadowRoot = host!.shadowRoot;
+        expect(shadowRoot).not.toBeNull();
+
+        // Get all rendered list items
+        const listItems = shadowRoot!.querySelectorAll('.mr-message-item');
+
+        // Only user messages are rendered in the sidebar
+        const userMessages = messages.filter((m) => m.role === 'user');
+
+        // Count expected items: pinned user messages appear in the pinned section AND
+        // in the main list, so total rendered items = pinnedCount + userMessages.length
+        const pinnedCount = userMessages.filter((m) => m.pinned).length;
+        const expectedCount = userMessages.length > 0
+          ? (pinnedCount > 0 ? pinnedCount + userMessages.length : userMessages.length)
+          : 0;
+        expect(listItems.length).toBe(expectedCount);
+
+        // Build a map of uid -> message for lookup (user messages only)
+        const msgMap = new Map(userMessages.map((m) => [m.uid, m]));
+
+        // Verify each rendered list item contains ordinal, role label, and preview
+        for (const li of listItems) {
+          const uid = (li as HTMLElement).dataset.uid;
+          expect(uid).toBeDefined();
+
+          const msg = msgMap.get(uid!);
+          expect(msg).toBeDefined();
+
+          // Check ordinal is present (e.g., "#1", "#42")
+          const ordinalEl = li.querySelector('.mr-ordinal');
+          expect(ordinalEl).not.toBeNull();
+          expect(ordinalEl!.textContent).toBe(`#${msg!.ordinal}`);
+
+          // Check role label is present ("User" or "Assistant")
+          const roleEl = li.querySelector('.mr-role');
+          expect(roleEl).not.toBeNull();
+          const expectedRole = msg!.role === 'user' ? 'User' : 'Assistant';
+          expect(roleEl!.textContent).toBe(expectedRole);
+
+          // Check text preview is present
+          const previewEl = li.querySelector('.mr-preview');
+          expect(previewEl).not.toBeNull();
+          expect(previewEl!.textContent).toBe(msg!.preview);
+        }
+
+        // Clean up for next iteration
+        controller!.unmount();
+        controller = null;
+      }),
+      { numRuns: 100 }
+    );
+  });
+});
