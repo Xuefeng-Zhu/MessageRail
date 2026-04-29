@@ -495,7 +495,7 @@ Object Store: pins
 
 ### Property 10: Pin Toggle Round-Trip
 
-*For any* indexed message, pinning it and then unpinning it SHALL result in the message being unpinned and the pin record being absent from the IndexedDB_Store. The message's state after pin+unpin SHALL be equivalent to its state before pinning.
+*For any* indexed message, pinning it and then unpinning it SHALL result in the message being unpinned and the pin record being absent from the IndexedDB_Store. The message's state after pin+unpin SHALL be equivalent to its state before pinning. Additionally, a pinned message SHALL appear only in the pinned section and NOT in the main message list; unpinning SHALL restore it to its original ordinal position in the main list.
 
 **Validates: Requirements 9.5**
 

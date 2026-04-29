@@ -161,8 +161,8 @@ This plan implements the MessageRail browser extension incrementally, starting w
     - `render(messages)`: display each `IndexedMessage` as a list item with ordinal, role label, and text preview (~80 chars)
     - Use semantic list markup (`ol` or `ul` with `li`)
     - Show streaming indicator for messages with `status: 'streaming'`; remove on `status: 'complete'`
-    - Show visual pin marker on pinned messages; render pinned section at top
-    - Include a pin toggle button on each message item (keyboard-focusable, accessible label)
+    - Show visual pin marker on pinned messages; render pinned section at top; pinned messages do NOT appear in the main (unpinned) list
+    - Include a pin toggle button on each message item (keyboard-focusable, accessible label); unpinning restores the message to its ordinal position in the main list
     - Include a jump button on each message item (keyboard-focusable, accessible label)
     - _Requirements: 6.3, 6.4, 6.6, 6.7, 9.1, 9.3, 9.4, 12.3, 12.4, 15.1, 15.2_
   - [x] 10.3 Write property test for sidebar rendering completeness

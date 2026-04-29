@@ -135,8 +135,9 @@ MessageRail is a privacy-first Manifest V3 browser extension that adds a univers
 1. THE Sidebar SHALL display a pin button on each message list item.
 2. WHEN the user clicks the pin button on a message, THE MessageRail SHALL persist the pin metadata and message text to the IndexedDB_Store.
 3. WHEN a message is pinned, THE Sidebar SHALL display a visual marker on the pinned message item to distinguish it from unpinned messages.
-4. THE Sidebar SHALL display pinned messages at the top of the message list or in a clearly separated pinned section.
-5. WHEN the user clicks the pin button on an already-pinned message, THE MessageRail SHALL remove the pin and delete the pin record from the IndexedDB_Store.
+4. THE Sidebar SHALL display pinned messages in a clearly separated pinned section at the top of the message list.
+5. WHEN a message is pinned, THE Sidebar SHALL remove that message from the main (unpinned) message list so it appears only in the pinned section.
+6. WHEN the user clicks the pin button on an already-pinned message, THE MessageRail SHALL remove the pin and delete the pin record from the IndexedDB_Store, and the message SHALL reappear in its original ordinal position in the main message list.
 6. WHEN the user reopens the Sidebar on the same conversation, THE MessageRail SHALL restore previously pinned messages from the IndexedDB_Store.
 
 ### Requirement 10: Local Storage
